@@ -129,48 +129,120 @@ st.set_page_config(
 # ---------------------------------------------------------------------
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Outfit:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Outfit:wght@300;400;700&display=swap');
     
+    /* 🌌 ANIMATED DEEP SPACE BACKGROUND */
     .stApp {
-        background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+        background: linear-gradient(-45deg, #050510, #1a1a2e, #0f0c29, #1b001b);
+        background-size: 400% 400%;
+        animation: gradientBG 15s ease infinite;
+        color: #e0e0e0;
     }
     
-    h1 {
-        font-family: 'Share Tech Mono', monospace;
-        color: #00ff80;
-        text-align: center;
-        text-transform: uppercase;
-        letter-spacing: 3px;
-        text-shadow: 0 0 20px rgba(0,255,128,0.5);
+    @keyframes gradientBG {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
     }
     
-    @keyframes pulse {
-        0% { opacity: 0.8; text-shadow: 0 0 20px rgba(0,255,128,0.6); }
-        50% { opacity: 1.0; text-shadow: 0 0 40px rgba(0,255,128,0.9); }
-        100% { opacity: 0.8; text-shadow: 0 0 20px rgba(0,255,128,0.6); }
+    /* 🔮 GLASSMORPHISM CONTAINERS */
+    .stTabs [data-baseweb="tab-list"] {
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(10px);
+        border-radius: 16px;
+        padding: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
     }
     
+    .stTabs [data-baseweb="tab"] {
+        color: #888;
+        font-family: 'Outfit', sans-serif;
+        font-weight: 700;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        color: #00ff80 !important;
+        text-shadow: 0 0 10px rgba(0,255,128,0.5);
+    }
+    
+    /* 📊 STATS CARDS WITH NEON BORDERS */
     .stats-container {
-        background: rgba(0, 255, 128, 0.05);
-        border: 2px solid #00ff80;
+        background: rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-left: 4px solid #00ff80; /* Default Green */
         border-radius: 12px;
         padding: 20px;
         text-align: center;
-        margin: 20px 0;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    
+    .stats-container:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 30px rgba(0, 255, 128, 0.2);
+        border-color: #00ffff; /* Hover Cyan */
+    }
+    
+    /* 🚀 UPLOAD BOX STYLING */
+    .stFileUploader {
+        border: 2px dashed rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+        padding: 20px;
+        background: rgba(0,0,0,0.2);
+        transition: border 0.3s;
+    }
+    
+    .stFileUploader:hover {
+        border-color: #00ff80;
+        background: rgba(0, 255, 128, 0.05);
+    }
+
+    /* 🖋️ TYPOGRAPHY */
+    h1 {
+        font-family: 'Share Tech Mono', monospace;
+        color: #fff;
+        text-align: center;
+        text-transform: uppercase;
+        letter-spacing: 3px;
+    }
+    
+    h3 {
+        font-family: 'Outfit', sans-serif;
+        color: #00ffff; /* Cyan Headers */
+        border-bottom: 2px solid rgba(0, 255, 255, 0.3);
+        padding-bottom: 10px;
+        margin-top: 20px;
+    }
+    
+    /* ✨ PULSE ANIMATION FOR LOGO */
+    @keyframes pulse {
+        0% { opacity: 0.8; text-shadow: 0 0 20px rgba(0,255,128,0.6); }
+        50% { opacity: 1.0; text-shadow: 0 0 40px rgba(0,255,128,0.9), 0 0 80px rgba(0,255,128,0.4); }
+        100% { opacity: 0.8; text-shadow: 0 0 20px rgba(0,255,128,0.6); }
     }
     
     .stat-number {
-        font-size: 3rem;
+        font-size: 3.5rem;
         font-weight: bold;
-        color: #00ff80;
+        background: -webkit-linear-gradient(#00ff80, #008040);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
         font-family: 'Share Tech Mono', monospace;
     }
     
     .stat-label {
         font-size: 0.9rem;
-        color: #888;
+        color: #aaa;
         text-transform: uppercase;
         letter-spacing: 2px;
+        font-family: 'Outfit', sans-serif;
+    }
+    
+    /* 🔴 ALERT BOXES */
+    .stAlert {
+        background-color: rgba(0,0,0,0.6) !important;
+        border: 1px solid #333 !important;
+        border-radius: 8px;
     }
     
     #MainMenu, footer, header {visibility: hidden;}
