@@ -370,6 +370,33 @@ with tab2:
 # ---------------------------------------------------------------------
 # TAB 3: Admin Panel
 # ---------------------------------------------------------------------
+def delete_entry(crop_filename):
+    """Delete a specific entry from filesystem and metadata"""
+    # 1. Delete Crop File
+    crop_path = CROPS_DIR / crop_filename
+    if crop_path.exists():
+        os.remove(crop_path)
+    
+    # 2. Update Metadata CSV
+    if METADATA_FILE.exists():
+        lines = []
+        with open(METADATA_FILE, 'r') as f:
+            lines = f.readlines()
+        
+        with open(METADATA_FILE, 'w') as f:
+            for line in lines:
+                # Check if this line contains the filename
+                if crop_filename not in line:
+                    f.write(line)
+    
+    # 3. Update Stats
+    stats = load_stats()
+    if stats['plates_captured'] > 0:
+        stats['plates_captured'] -= 1
+        save_stats(stats)
+    
+    return True
+
 # ---------------------------------------------------------------------
 # TAB 3: Admin Panel
 # ---------------------------------------------------------------------
@@ -377,40 +404,61 @@ with tab3:
     if check_password():
         st.success(f"✅ Logged in as {ADMIN_USER}")
         
-        # Download Dataset Button
-        if st.button("📦 Download Full Dataset (Images + Metadata)"):
-            # Create ZIP
-            zip_buffer = io.BytesIO()
-            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                # Walk through the directory and add all files
-                for root, dirs, files in os.walk(DATASET_DIR):
-                    for file in files:
-                        file_path = os.path.join(root, file)
-                        arcname = os.path.relpath(file_path, DATASET_DIR)
-                        zip_file.write(file_path, arcname)
-            
-            zip_buffer.seek(0)
-            st.download_button(
-                label="⬇️ Download ZIP",
-                data=zip_buffer,
-                file_name=f"iraqi_plates_dataset_v4.2_{datetime.now().strftime('%Y%m%d')}.zip",
-                mime="application/zip"
-            )
-        
+        col_main1, col_main2 = st.columns([1, 1])
+        with col_main1:
+            # Download Dataset Button
+            if st.button("📦 Download Full Dataset (Images + Metadata)"):
+                # Create ZIP
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                    # Walk through the directory and add all files
+                    for root, dirs, files in os.walk(DATASET_DIR):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            arcname = os.path.relpath(file_path, DATASET_DIR)
+                            zip_file.write(file_path, arcname)
+                
+                zip_buffer.seek(0)
+                st.download_button(
+                    label="⬇️ Download ZIP",
+                    data=zip_buffer,
+                    file_name=f"iraqi_plates_dataset_v4.2_{datetime.now().strftime('%Y%m%d')}.zip",
+                    mime="application/zip"
+                )
+
         st.markdown("---")
-        st.markdown("### 📊 Dataset Preview (Crops)")
         
-        # Display collected crops
+        # Data Management Header
+        col_head1, col_head2 = st.columns([3, 1])
+        with col_head1:
+             st.markdown("### 🛠️ Manage Data")
+        with col_head2:
+             show_all = st.checkbox("Show All Entries")
+
+        # Display collected crops with DELETE button
         images = list(CROPS_DIR.glob("*.jpg"))
+        # Sort by newest first (modification time)
+        images.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+        
         if images:
+            limit = len(images) if show_all else 24
+            
+            # Create grid
             cols = st.columns(6)
-            for idx, img_path in enumerate(images[:24]):  # Show first 24
+            for idx, img_path in enumerate(images[:limit]):
                 with cols[idx % 6]:
                     img = cv2.imread(str(img_path))
-                    st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), caption=img_path.name, use_column_width=True)
+                    # Display Image
+                    st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), use_column_width=True)
+                    # Display Filename (truncated)
+                    st.caption(f"{img_path.name[:10]}...")
+                    # Delete Button
+                    if st.button("🗑️ DELETE", key=f"del_{img_path.name}"):
+                        delete_entry(img_path.name)
+                        st.rerun()
             
-            if len(images) > 24:
-                st.info(f"Showing 24 of {len(images)} crops. Download full dataset to see all.")
+            if not show_all and len(images) > 24:
+                st.info(f"Showing 24 of {len(images)} most recent crops. Check 'Show All Entries' to see everything.")
         else:
             st.info("No data collected yet.")
         
@@ -419,10 +467,11 @@ with tab3:
         st.markdown("### ⚠️ Danger Zone")
         col_risk1, col_risk2 = st.columns(2)
         with col_risk1:
-            if st.button("🗑️ Reset All Data", type="secondary"):
-                if st.checkbox("I confirm deletion"):
+            if st.button("🗑️ DELETE EVERYTHING", type="secondary"):
+                if st.checkbox("I confirm complete deletion"):
                     import shutil
-                    shutil.rmtree(DATASET_DIR)
+                    if DATASET_DIR.exists():
+                        shutil.rmtree(DATASET_DIR)
                     init_dataset()
                     st.success("Dataset CLEARED! ✅")
                     st.rerun()
