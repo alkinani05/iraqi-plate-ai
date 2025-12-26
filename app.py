@@ -18,126 +18,94 @@ import av
 # ⚙️ CONFIG & PAGE SETUP
 # ---------------------------------------------------------------------
 st.set_page_config(
-    page_title="Algonest AI | Plate Reader", 
-    page_icon="🦅", 
-    layout="wide", 
+    page_title="Algonest AI | Scanner", 
+    page_icon="👁️", 
+    layout="centered", # Centered is better for mobile-first feel
     initial_sidebar_state="collapsed"
 )
 
 # ---------------------------------------------------------------------
-# 🎨 PLATINUM DESIGN SYSTEM (CSS)
+# 🎨 STAR-SYSTEM DESIGN (CSS)
 # ---------------------------------------------------------------------
 st.markdown("""
 <style>
-    /* Global Reset & Font */
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Outfit:wght@400;700&display=swap');
     
-    html, body, [class*="css"] {
-        font-family: 'Outfit', sans-serif;
-        background-color: #050a10; 
-        color: #e6edf3;
+    body {
+        background-color: #000;
+        color: #fff;
     }
-
-    /* 💎 Ultimate Background */
+    
     .stApp {
-        background: radial-gradient(circle at 50% 10%, #1f2937 0%, #0d1117 40%, #000000 100%);
-        background-attachment: fixed;
-    }
-    
-    /* 🌟 Header Styling */
-    h1 {
-        background: linear-gradient(90deg, #ffd700 0%, #ffffff 80%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-weight: 800;
-        font-size: 2.2rem !important;
-        text-align: center;
-        margin-bottom: 0rem !important;
-        letter-spacing: -1px;
-        text-shadow: 0 0 20px rgba(255, 215, 0, 0.2);
-    }
-    
-    .subtitle {
-        text-align: center;
-        color: #8b949e;
-        font-size: 0.9rem;
-        letter-spacing: 4px;
-        margin-bottom: 2rem;
-        text-transform: uppercase;
-        opacity: 0.8;
+        background: #000; /* Pure Black for OLED */
     }
 
-    /* 🔘 Modern Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
-        background-color: rgba(255,255,255,0.05);
-        padding: 5px;
-        border-radius: 50px;
-        display: flex;
+    /* 🔥 SCANNER MODE TOGGLE */
+    .stRadio > div {
+        flex-direction: row;
         justify-content: center;
+        background: #111;
+        border-radius: 12px;
+        padding: 4px;
+        border: 1px solid #333;
     }
-
-    .stTabs [data-baseweb="tab"] {
-        height: 40px;
-        background-color: transparent;
-        border-radius: 40px;
-        color: #8b949e;
-        flex: 1;
-        border: none !important;
-        transition: all 0.2s ease;
+    
+    div[data-baseweb="radio"] > div {
+        background: transparent;
+        border-radius: 8px;
+        color: #888;
+        padding: 5px 15px;
+        font-family: 'Outfit', sans-serif;
     }
-
-    .stTabs [aria-selected="true"] {
-        background-color: #ffd700 !important;
+    
+    div[aria-checked="true"] {
+        background-color: #00ff80 !important; /* Cyber Green */
         color: #000 !important;
         font-weight: bold;
-        box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
-    }
-
-    /* 📸 Video Container */
-    video {
-        border-radius: 12px !important;
-        border: 1px solid #333 !important;
-        box-shadow: 0 20px 50px rgba(0,0,0,0.8);
-        width: 100% !important;
+        box-shadow: 0 0 10px rgba(0,255,128,0.5);
     }
     
-    /* Center the WebRTC component */
-    div[data-testid="stVerticalBlock"] > div > div > div > div > video {
-        margin: 0 auto;
-        display: block;
-    }
-
-    /* ✨ Result Cards */
-    div.stSuccess {
-        background: rgba(16, 185, 129, 0.1);
-        border: 1px solid rgba(16, 185, 129, 0.3);
-        color: #e6edf3;
-        border-radius: 10px;
+    h1 {
+        font-family: 'Share Tech Mono', monospace;
+        color: #00ff80;
         text-align: center;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        font-size: 1.8rem;
+        margin-bottom: 0px;
+        text-shadow: 0 0 10px rgba(0,255,128,0.4);
     }
-
-    /* Footer */
-    .footer {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        background: rgba(0,0,0,0.8);
-        backdrop-filter: blur(10px);
-        padding: 10px;
-        text-align: center;
-        font-size: 0.7rem;
+    
+    .status-bar {
+        font-family: 'Share Tech Mono', monospace;
+        display: flex;
+        justify-content: space-between;
+        padding: 5px 10px;
+        background: #0a0a0a;
+        border-bottom: 1px solid #333;
+        font-size: 0.8rem;
         color: #666;
-        border-top: 1px solid #222;
-        z-index: 999;
+        margin-bottom: 20px;
+    }
+
+    /* 📸 VIEWFINDER STYLE */
+    video {
+        border-radius: 4px !important;
+        border: 2px solid #333 !important;
+        box-shadow: 0 0 30px rgba(0,255,128,0.1);
+        width: 100% !important;
+        max-height: 80vh;
+    }
+
+    /* 🧠 Image Result Optimization */
+    .stImage > img {
+        border-radius: 8px;
+        border: 1px solid #333;
     }
     
-    /* Hide Streamlit Elements */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    
+    /* Hide Junk */
+    #MainMenu, footer, header {visibility: hidden;}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -148,7 +116,6 @@ st.markdown("""
 def load_model():
     return PlateReader()
 
-# Load early to fail fast if issues
 try:
     reader = load_model()
 except Exception as e:
@@ -164,11 +131,8 @@ class PlateVideoTransformer(VideoTransformerBase):
         self.lock = threading.Lock()
         self.frame_count = 0
         self.last_results = []
-        
-        # FPS Tracking
-        self.prev_time = 0
         self.fps = 0
-        self.infer_ms = 0
+        self.prev_time = 0
 
     def recv(self, frame):
         current_time = time.time()
@@ -177,11 +141,10 @@ class PlateVideoTransformer(VideoTransformerBase):
         # FPS Calc
         if self.prev_time > 0:
             dt = current_time - self.prev_time
-            if dt > 0:
-                self.fps = 0.9 * self.fps + 0.1 * (1.0 / dt)
+            if dt > 0: self.fps = 0.9 * self.fps + 0.1 * (1.0 / dt)
         self.prev_time = current_time
 
-        # 1. Resize for Mobile Performance
+        # Mobile Optimization
         height, width = img.shape[:2]
         target_width = 800
         scale = 1.0
@@ -193,18 +156,13 @@ class PlateVideoTransformer(VideoTransformerBase):
         else:
             img_small = img
 
-        # 2. Skip Frames for Inference Speed
         self.frame_count += 1
-        run_ai = (self.frame_count % 3 == 0) # Run every 3rd frame
+        run_ai = (self.frame_count % 3 == 0)
         results = self.last_results
         
         if run_ai:
             with self.lock:
-                t0 = time.time()
                 small_results = self.reader.predict(img_small)
-                self.infer_ms = (time.time() - t0) * 1000
-                
-                # Descale coords
                 results = []
                 for res in small_results:
                     x1, y1, x2, y2 = res['box']
@@ -215,80 +173,73 @@ class PlateVideoTransformer(VideoTransformerBase):
                     })
                 self.last_results = results
         
-        # 3. Visualize
-        try:
-            annotated_img = self.reader.visualize(img, results, fps=self.fps, inference_ms=self.infer_ms)
-        except Exception as e:
-            annotated_img = img # Fallback
-            
+        annotated_img = self.reader.visualize(img, results, fps=self.fps)
         return av.VideoFrame.from_ndarray(annotated_img, format="bgr24")
 
 # ---------------------------------------------------------------------
 # 📱 UI LAYOUT
 # ---------------------------------------------------------------------
-st.markdown("<h1>ALGONEST AI</h1>", unsafe_allow_html=True)
-st.markdown("<p class='subtitle'>Professional License Plate Recognition System v3.0</p>", unsafe_allow_html=True)
+st.markdown("""
+    <div class="status-bar">
+        <span>SYSTEM: ONLINE</span>
+        <span>NET: SECURE</span>
+        <span>VER: 3.1 PLATINUM</span>
+    </div>
+    <h1>ALGONEST | SECURITY</h1>
+""", unsafe_allow_html=True)
 
-# Main Interface
-tab_cam, tab_up = st.tabs(["🎥 LIVE SCANNER", "🖼️ PHOTO ANALYZER"])
+# Advanced Mode Toggle
+mode = st.radio("OPERATIONAL MODE", ["SCANNER", "ANALYSIS"], horizontal=True, label_visibility="collapsed")
 
-with tab_cam:
+if mode == "SCANNER":
+    st.markdown("<div style='text-align:center; color:#666; font-size:0.8rem; margin-top:5px; margin-bottom:10px;'>Align vehicle plate within the frame</div>", unsafe_allow_html=True)
     
-    st.markdown("### 🔴 Real-Time Secure Stream")
-    
-    # STUN Config for firewall traversal
-    RTC_CONFIG = RTCConfiguration(
-        {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
-    )
-    
-    # Mobile-First Media Constraints
-    CONSTRAINTS = {
-        "audio": False,
-        "video": {
-            "facingMode": "environment", # Prefer back camera
-            "width": {"min": 640, "ideal": 1280, "max": 1920},
-            "height": {"min": 480, "ideal": 720, "max": 1080},
-        }
-    }
+    # 🔥 EXTENSIVE ICE CONFIGURATION FOR CONNECTION FIX
+    # We add ample free STUN servers to maximize connection probability
+    RTC_CONFIG = RTCConfiguration({
+        "iceServers": [
+            {"urls": ["stun:stun.l.google.com:19302"]},
+            {"urls": ["stun:stun1.l.google.com:19302"]},
+            {"urls": ["stun:stun2.l.google.com:19302"]},
+            {"urls": ["stun:stun.global.calls.net:3478"]},
+            {"urls": ["stun:stun.framasoft.org:3478"]},
+            {"urls": ["stun:stun.services.mozilla.com"]},
+        ]
+    })
     
     webrtc_ctx = webrtc_streamer(
-        key="plate-scanner-pro",
+        key="plate-scanner-advanced",
         mode=WebRtcMode.SENDRECV,
         rtc_configuration=RTC_CONFIG,
-        media_stream_constraints=CONSTRAINTS,
+        media_stream_constraints={
+            "audio": False,
+            "video": {
+                "facingMode": "environment",
+                "width": {"ideal": 1280},
+                "height": {"ideal": 720},
+            }
+        },
         video_processor_factory=PlateVideoTransformer,
         async_processing=True,
     )
-    
-    if webrtc_ctx.state.playing:
-        st.caption("⚡ Powered by Algonest Neural Engine")
-    else:
-        st.info("👆 Tap START to activate camera system")
 
-with tab_up:
-    st.markdown("### 🧬 Static Analysis")
-    uploaded = st.file_uploader("Upload Image", type=['jpg','png','jpeg'])
+elif mode == "ANALYSIS":
+    st.markdown("### 🖼️ STATIC ANALYSIS")
+    uploaded = st.file_uploader("Upload Surveillance Image", type=['jpg','png','jpeg'])
     
     if uploaded:
-        file_bytes = np.asarray(bytearray(uploaded.read()), dtype=np.uint8)
-        img = cv2.imdecode(file_bytes, 1)
-        
-        # Analyze
-        with st.spinner("Processing..."):
-            results = reader.predict(img)
-            viz = reader.visualize(img, results)
+        col1, col2, col3 = st.columns([1, 6, 1]) # Column layout to center and control size
+        with col2:
+            file_bytes = np.asarray(bytearray(uploaded.read()), dtype=np.uint8)
+            img = cv2.imdecode(file_bytes, 1)
             
-            st.image(cv2.cvtColor(viz, cv2.COLOR_BGR2RGB), use_column_width=True)
-            
-            if results:
-                for r in results:
-                    st.success(f"DETECTED: **{r['text']}** (Confidence: {int(r['conf']*100)}%)")
-            else:
-                st.warning("No plates detected in this image.")
+            with st.spinner("DECRYPTING VISUAL DATA..."):
+                results = reader.predict(img)
+                viz = reader.visualize(img, results)
+                
+                # Dynamic sizing based on aspect ratio
+                st.image(cv2.cvtColor(viz, cv2.COLOR_BGR2RGB), use_column_width=True, caption=f"Processing Complete: {len(results)} Targets Found")
+                
+                if results:
+                    st.success(f"TARGET ACQUIRED: {results[0]['text']}")
 
-st.markdown("""
-<div class='footer'>
-    Algonest Artificial Intelligence • Baghdad, Iraq • 2025<br>
-    System Status: 🟢 Operational
-</div>
-""", unsafe_allow_html=True)

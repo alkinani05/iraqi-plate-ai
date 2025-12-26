@@ -204,7 +204,7 @@ class PlateReader:
 
     def visualize(self, img, results, fps=None, inference_ms=None):
         """
-        Platinum HUD Design: High-End, Professional, Glass-styled.
+        ADVANCED SCANNER HUD: Professional Military/Sci-Fi Aesthetic
         """
         # Helper function
         def to_english_digits(text):
@@ -218,38 +218,51 @@ class PlateReader:
         draw = ImageDraw.Draw(annotated_pil, 'RGBA')
         w, h = annotated_pil.size
         
-        # Scale factor
-        k = max(h / 1080, 0.5) 
+        # Scale factor (Optimized for Mobile)
+        k = max(h / 1000, 0.6) 
         
-        # Palette (Cyberpunk Gold & Teal)
-        col_primary = (255, 215, 0, 255)   # Gold
-        col_sec = (0, 240, 255, 200)      # Cyan
-        col_bg = (10, 15, 25, 230)        # Dark Blue/Black semi-transparent
-        col_success = (50, 255, 100, 255) # Green
+        # PALETTE: Clean White/Red/Green (Professional Security Look)
+        # Instead of generic neon, we use high-contrast "OS" colors.
+        col_scan = (255, 255, 255, 150)    # White dim
+        col_lock = (0, 255, 128, 255)      # Spring Green (Lock)
+        col_alert = (255, 50, 50, 255)     # Red
+        col_bg = (10, 10, 10, 220)         # Almost Black
         
         # Dynamic Fonts
-        f_xl = self.get_font_en(int(60 * k))
-        f_ar = self.get_font_ar(int(50 * k))
-        f_md = self.get_font_en(int(25 * k))
-        f_sm = self.get_font_en(int(18 * k))
+        f_xl = self.get_font_en(int(55 * k))
+        f_ar = self.get_font_ar(int(45 * k))
+        f_md = self.get_font_en(int(22 * k))
+        f_sm = self.get_font_en(int(16 * k))
+        f_xs = self.get_font_en(int(12 * k))
 
-        # 1. TOP BAR (Minimalist)
-        # ------------------------------------------------
-        bar_h = int(50 * k)
-        draw.rectangle([0, 0, w, bar_h], fill=(0,0,0,180))
+        # -----------------------------------------------
+        # 1. CENTRAL RETICLE (Always Visible)
+        # -----------------------------------------------
+        cx, cy = w//2, h//2
+        ret_len = int(30 * k)
+        gap = int(10 * k)
         
-        # Left: App Name
-        draw.text((20, int(10*k)), "ALGONEST | PRO", font=f_md, fill=col_primary)
+        # Crosshair center
+        draw.line([(cx-ret_len, cy), (cx-gap, cy)], fill=col_scan, width=1)
+        draw.line([(cx+gap, cy), (cx+ret_len, cy)], fill=col_scan, width=1)
+        draw.line([(cx, cy-ret_len), (cx, cy-gap)], fill=col_scan, width=1)
+        draw.line([(cx, cy+gap), (cx, cy+ret_len)], fill=col_scan, width=1)
         
-        # Right: FPS info
-        if fps is not None:
-            fps_text = f"FPS: {int(fps)}"
-            bbox = draw.textbbox((0,0), fps_text, font=f_sm)
-            draw.text((w - bbox[2] - 20, int(14*k)), fps_text, font=f_sm, fill=(200,200,200,255))
+        # Corner Brackets (Scope)
+        scope_w, scope_h = int(w*0.8), int(h*0.6)
+        sx1, sy1 = (w - scope_w)//2, (h - scope_h)//2
+        sx2, sy2 = sx1 + scope_w, sy1 + scope_h
+        slen = int(40 * k)
+        
+        # Draw Scope Corners
+        for (px, py, dx, dy) in [(sx1, sy1, 1, 1), (sx2, sy1, -1, 1), (sx1, sy2, 1, -1), (sx2, sy2, -1, -1)]:
+            draw.line([(px, py), (px + dx*slen, py)], fill=col_scan, width=2)
+            draw.line([(px, py), (px, py + dy*slen)], fill=col_scan, width=2)
 
-        # 2. DETECTION BOXES
-        # ------------------------------------------------
-        detected_text_display = None
+        # -----------------------------------------------
+        # 2. DETECTION LOGIC
+        # -----------------------------------------------
+        detected_text = None
         best_conf = 0
         
         for res in results:
@@ -257,74 +270,65 @@ class PlateReader:
             text = to_english_digits(res['text'])
             conf = res.get('conf', 0)
             
-            # Update best detection
             if conf > best_conf:
                 best_conf = conf
-                detected_text_display = text
-            
-            # Draw Corners Only (Sleek Look)
-            corner_len = int((x2-x1) * 0.2)
-            th = int(4 * k)
-            
-            # Top Left
-            draw.line([(x1, y1), (x1+corner_len, y1)], fill=col_primary, width=th)
-            draw.line([(x1, y1), (x1, y1+corner_len)], fill=col_primary, width=th)
-            # Top Right
-            draw.line([(x2, y1), (x2-corner_len, y1)], fill=col_primary, width=th)
-            draw.line([(x2, y1), (x2, y1+corner_len)], fill=col_primary, width=th)
-            # Bottom Left
-            draw.line([(x1, y2), (x1+corner_len, y2)], fill=col_primary, width=th)
-            draw.line([(x1, y2), (x1, y2-corner_len)], fill=col_primary, width=th)
-            # Bottom Right
-            draw.line([(x2, y2), (x2-corner_len, y2)], fill=col_primary, width=th)
-            draw.line([(x2, y2), (x2, y2-corner_len)], fill=col_primary, width=th)
-            
-            # Semi-transparent fill
-            valid_detect = conf > 0.4
-            fill_col = (255, 215, 0, 20) if valid_detect else (0, 255, 255, 20)
-            draw.rectangle([x1, y1, x2, y2], fill=fill_col)
+                detected_text = text
 
-        # 3. BOTTOM INFO CARD (Floating Glass)
-        # ------------------------------------------------
-        if detected_text_display and best_conf > 0.4:
-            # Reshape for Arabic if needed
-            if any('\u0600' <= c <= '\u06FF' for c in detected_text_display):
-                disp_text = get_display(arabic_reshaper.reshape(detected_text_display))
+            # Lock-on Bracket
+            is_verified = conf > 0.45
+            color = col_lock if is_verified else col_scan
+            
+            # Animate Bracket Expansion
+            m = 5 # margin
+            
+            # Draw Dynamic Box
+            draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
+            
+            # Label
+            if is_verified:
+                tag = f"CONF: {int(conf*100)}%"
+                draw.rectangle([x1, y1-30*k, x1+120*k, y1], fill=color)
+                draw.text((x1+5, y1-25*k), tag, font=f_sm, fill=(0,0,0,255))
+
+        # -----------------------------------------------
+        # 3. ADVANCED RESULTS PANE (Bottom)
+        # -----------------------------------------------
+        # Only show if we strongly detect something
+        if detected_text and best_conf > 0.45:
+            # Reshape Arabic
+            if any('\u0600' <= c <= '\u06FF' for c in detected_text):
+                disp_text = get_display(arabic_reshaper.reshape(detected_text))
                 font_main = f_ar
             else:
-                disp_text = detected_text_display
+                disp_text = detected_text
                 font_main = f_xl
 
-            # Box dimensions
-            card_w = int(w * 0.6)
-            card_h = int(120 * k)
-            card_x = (w - card_w) // 2
-            card_y = h - card_h - int(40 * k)
+            # Panel Geometry
+            pan_h = int(140 * k)
+            draw.rectangle([0, h-pan_h, w, h], fill=col_bg)
+            draw.line([0, h-pan_h, w, h-pan_h], fill=col_lock, width=2)
             
-            # Draw Glass Card with Glow
-            draw.rounded_rectangle([card_x, card_y, card_x+card_w, card_y+card_h], radius=20, fill=col_bg, outline=col_sec, width=2)
+            # Side Decor
+            draw.rectangle([0, h-pan_h, 10, h], fill=col_lock) # Left strip
             
-            # Glow behind text
-            # text_bbox = draw.textbbox((0,0), disp_text, font=font_main)
-            # text_w = text_bbox[2] - text_bbox[0]
-            # text_h = text_bbox[3] - text_bbox[1]
+            # Text Rendering
+            draw.text((30, h-pan_h+15), "TARGET IDENTIFIED", font=f_sm, fill=col_lock)
+            draw.text((30, h-pan_h+40), disp_text, font=font_main, fill=(255,255,255,255))
             
-            # Centered Text
-            draw.text((card_x + card_w//2, card_y + card_h//2), disp_text, font=font_main, anchor="mm", fill=col_primary)
+            # Meta info
+            draw.text((w-150*k, h-pan_h+20), f"ACCURACY", font=f_xs, fill=(150,150,150,255))
+            draw.text((w-150*k, h-pan_h+40), f"{int(best_conf*100)}%", font=f_xl, fill=col_lock)
             
-            # "LICENSE PLATE" Label
-            draw.text((card_x + 20, card_y + 15), "VERIFIED PLATE", font=f_sm, fill=col_success)
-            
-            # Confidence
-            draw.text((card_x + card_w - 80, card_y + 15), f"{int(best_conf*100)}%", font=f_sm, fill=col_primary)
-
         else:
-            # Scanning Animation (Crosshair)
-            cx, cy = w//2, h//2
-            len_ch = int(40 * k)
-            draw.line([(cx-len_ch, cy), (cx+len_ch, cy)], fill=(255,255,255,50), width=1)
-            draw.line([(cx, cy-len_ch), (cx, cy+len_ch)], fill=(255,255,255,50), width=1)
-            
-            draw.text((cx, cy + int(50*k)), "SEARCHING TARGET...", font=f_md, anchor="mm", fill=(255,255,255,180))
+            # System Idle / Scanning
+            draw.text((cx, h - int(50*k)), "• SYSTEM ACTIVE •", font=f_md, anchor="mm", fill=(200,200,200,200))
 
+        # -----------------------------------------------
+        # 4. TOP TELEMETRY
+        # -----------------------------------------------
+        draw.rectangle([0, 0, w, 40*k], fill=(0,0,0,150))
+        draw.text((15, 8*k), "REC ●", font=f_sm, fill=col_alert)
+        if fps:
+            draw.text((w-100*k, 8*k), f"{int(fps)} FPS", font=f_sm, fill=(0,255,0,200))
+        
         return cv2.cvtColor(np.array(annotated_pil), cv2.COLOR_RGBA2BGR)
