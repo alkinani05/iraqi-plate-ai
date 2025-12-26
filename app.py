@@ -183,7 +183,7 @@ st.markdown("""
     <div class="status-bar">
         <span>SYSTEM: ONLINE</span>
         <span>NET: SECURE</span>
-        <span>VER: 3.4 STABLE</span>
+        <span>VER: 3.5 CLEAN CORE</span>
     </div>
     <h1>ALGONEST | SECURITY</h1>
 """, unsafe_allow_html=True)
@@ -194,40 +194,35 @@ mode = st.radio("OPERATIONAL MODE", ["SCANNER", "ANALYSIS"], horizontal=True, la
 if mode == "SCANNER":
     st.markdown("<div style='text-align:center; color:#666; font-size:0.8rem; margin-top:5px; margin-bottom:10px;'>Align vehicle plate within the frame</div>", unsafe_allow_html=True)
     
-    # 🔥 STABILITY FIX: REDUCED POOL SIZE
-    # The 'NoneType has no attribute sendto' error happens when
-    # the socket closes while STUN is still retrying.
-    # We reduce pool size to 1 to prevent socket saturation.
-    RTC_CONFIG = RTCConfiguration({
-        "iceServers": [
-            {"urls": ["stun:stun.l.google.com:19302"]},
-            {"urls": ["stun:global.stun.twilio.com:3478"]},
-        ],
-        "iceCandidatePoolSize": 0, # DISABLED PRE-FETCH to prevent race condition
-        "iceTransportPolicy": "all",
-    })
+    # v3.5 REBUILD: MINIMALIST ROBUST CORE
+    # We strip all complex ICE logic and rely on the browser's default negotiation 
+    # assisted by the single most reliable STUN server.
     
-    # 🛡️ SAFE STREAMER WRAPPER
-    try:
-        webrtc_ctx = webrtc_streamer(
-            key="plate-scanner-stable",
-            mode=WebRtcMode.SENDRECV,
-            rtc_configuration=RTC_CONFIG,
-            media_stream_constraints={
-                "audio": False,
-                "video": {
-                    "facingMode": "environment",
-                    "width": {"ideal": 640},
-                    "height": {"ideal": 480},
-                    "frameRate": {"ideal": 30, "max": 60}
-                }
-            },
-            video_processor_factory=PlateVideoTransformer,
-            async_processing=True,
-        )
-    except Exception as e:
-        st.error(f"Stream Error: {e}")
-        webrtc_ctx = None
+    # 1. Simple Google STUN (Highest Success Rate globally)
+    RTC_CONFIG = RTCConfiguration({
+        "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+    })
+
+    # 2. Robust Media Constraints (Lower frame rate for stability)
+    MEDIA_CONSTRAINTS = {
+        "audio": False,
+        "video": {
+            "facingMode": "environment",
+            "width": {"ideal": 640},  # VGA
+            "height": {"ideal": 480}, # VGA
+            "frameRate": {"max": 24}  # Cap FPS to ease bandwidth
+        }
+    }
+
+    # 3. Streamer with specific key to force-reset component
+    webrtc_streamer(
+        key="pro-scanner-v3.5", 
+        mode=WebRtcMode.SENDRECV,
+        rtc_configuration=RTC_CONFIG,
+        media_stream_constraints=MEDIA_CONSTRAINTS,
+        video_processor_factory=PlateVideoTransformer,
+        async_processing=True,
+    )
 
 elif mode == "ANALYSIS":
     st.markdown("### 🖼️ STATIC ANALYSIS")
