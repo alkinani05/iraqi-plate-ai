@@ -45,55 +45,72 @@ def check_password():
         return True
 
 # ---------------------------------------------------------------------
-# 📁 DATASET MANAGEMENT
+# 📁 DATASET MANAGEMENT v4.2
 # ---------------------------------------------------------------------
 DATASET_DIR = Path("collected_dataset")
-LOW_CONF_DIR = DATASET_DIR / "low_confidence"
+FULL_IMG_DIR = DATASET_DIR / "full_images"
+CROPS_DIR = DATASET_DIR / "crops"
+METADATA_FILE = DATASET_DIR / "metadata.csv"
 STATS_FILE = DATASET_DIR / "stats.json"
 
 def init_dataset():
     """Initialize dataset directories and stats file"""
+    # Create new structure
     DATASET_DIR.mkdir(exist_ok=True)
-    LOW_CONF_DIR.mkdir(exist_ok=True)
+    FULL_IMG_DIR.mkdir(exist_ok=True)
+    CROPS_DIR.mkdir(exist_ok=True)
+    
+    # Initialize metadata header if new
+    if not METADATA_FILE.exists():
+        with open(METADATA_FILE, 'w') as f:
+            f.write("timestamp,full_image_id,crop_image_id,predicted_text,confidence,review_status\n")
     
     if not STATS_FILE.exists():
         stats = {
             "total_uploads": 0,
-            "photos_collected": 0,
-            "videos_processed": 0,
+            "plates_captured": 0,
             "last_updated": datetime.now().isoformat()
         }
         save_stats(stats)
     return load_stats()
 
 def load_stats():
-    """Load statistics"""
     if STATS_FILE.exists():
         with open(STATS_FILE, 'r') as f:
             return json.load(f)
-    return {"total_uploads": 0, "photos_collected": 0, "videos_processed": 0}
+    return {"total_uploads": 0, "plates_captured": 0}
 
 def save_stats(stats):
-    """Save statistics"""
     stats["last_updated"] = datetime.now().isoformat()
     with open(STATS_FILE, 'w') as f:
         json.dump(stats, f, indent=2)
 
-def save_to_dataset(img, text, confidence):
-    """Save image to dataset if confidence < 90%"""
-    if confidence >= 0.90:
-        return False
+def save_entry(full_img, plate_crop, text, confidence, base_filename):
+    """
+    Save Full Image + Crop + Metadata
+    base_filename: unique ID for the capture (e.g. timestamp_uuid)
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    filename = f"plate_{timestamp}_conf{int(confidence*100)}.jpg"
-    filepath = LOW_CONF_DIR / filename
+    # 1. Save Full Image (if not already saved for this batch)
+    # We use the base_filename to check existence to avoid duplicates if multiple plates in one car
+    full_img_name = f"full_{base_filename}.jpg"
+    full_img_path = FULL_IMG_DIR / full_img_name
+    if not full_img_path.exists():
+        cv2.imwrite(str(full_img_path), full_img)
+        
+    # 2. Save Crop
+    crop_name = f"crop_{base_filename}_{text}.jpg"
+    # Sanitize text for filename
+    safe_text = "".join([c for c in text if c.isalnum()])
+    crop_name = f"crop_{base_filename}_{safe_text}.jpg"
     
-    cv2.imwrite(str(filepath), img)
+    cv2.imwrite(str(CROPS_DIR / crop_name), plate_crop)
     
-    # Save metadata
-    metadata_file = LOW_CONF_DIR / "metadata.csv"
-    with open(metadata_file, 'a') as f:
-        f.write(f"{filename},{text},{confidence:.3f},{datetime.now().isoformat()}\n")
+    # 3. Log to CSV
+    # format: timestamp, full_img_name, crop_name, text, confidence, [PENDING]
+    with open(METADATA_FILE, 'a') as f:
+        f.write(f"{timestamp},{full_img_name},{crop_name},{text},{confidence:.4f},PENDING\n")
     
     return True
 
@@ -173,31 +190,26 @@ stats = init_dataset()
 # ---------------------------------------------------------------------
 # 📱 MAIN APP
 # ---------------------------------------------------------------------
-st.markdown("<h1>🚗 IRAQI PLATE COLLECTOR</h1>", unsafe_allow_html=True)
+# ---------------------------------------------------------------------
+# 📱 MAIN APP
+# ---------------------------------------------------------------------
+st.markdown("<h1>🚗 IRAQI PLATE COLLECTOR v4.2</h1>", unsafe_allow_html=True)
 
 # Public Stats Display
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 with col1:
     st.markdown(f"""
     <div class='stats-container'>
         <div class='stat-number'>{stats['total_uploads']}</div>
-        <div class='stat-label'>Total Uploads</div>
+        <div class='stat-label'>Contributions</div>
     </div>
     """, unsafe_allow_html=True)
     
 with col2:
     st.markdown(f"""
     <div class='stats-container'>
-        <div class='stat-number'>{stats['photos_collected']}</div>
-        <div class='stat-label'>Dataset Images</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-with col3:
-    st.markdown(f"""
-    <div class='stats-container'>
-        <div class='stat-number'>{stats['videos_processed']}</div>
-        <div class='stat-label'>Videos Processed</div>
+        <div class='stat-number'>{stats['plates_captured']}</div>
+        <div class='stat-label'>Plates In Database</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -221,7 +233,7 @@ with tab1:
         file_bytes = np.asarray(bytearray(uploaded_photo.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, 1)
         
-        with st.spinner("🤖 Analyzing..."):
+        with st.spinner("🤖 Analyzing & Archiving..."):
             results = reader.predict(img)
             viz = reader.visualize(img, results)
             
@@ -232,21 +244,24 @@ with tab1:
             
             with col_res:
                 if results:
+                    st.success(f"✅ Found {len(results)} plates!")
+                    
+                    # Generate a unique batch ID for this image
+                    # Use timestamp + hash of filename to be unique but deterministic
+                    batch_id = datetime.now().strftime("%H%M%S") + "_" + hashlib.md5(file_id.encode()).hexdigest()[:6]
+                    
                     for res in results:
                         conf = res['conf']
                         text = res['text']
+                        x1, y1, x2, y2 = res['box']
+                        plate_crop = img[y1:y2, x1:x2]
                         
-                        if conf >= 0.90:
-                            st.success(f"✅ **{text}**\n\nConfidence: {int(conf*100)}%")
-                        else:
-                            st.warning(f"⚠️ **{text}**\n\nConfidence: {int(conf*100)}%\n\n📥 Saved to dataset")
+                        st.write(f"**{text}** ({int(conf*100)}%)")
                         
                         # Only auto-save if new file
                         if file_id not in st.session_state.processed_files:
-                            x1, y1, x2, y2 = res['box']
-                            plate_crop = img[y1:y2, x1:x2]
-                            if save_to_dataset(plate_crop, text, conf):
-                                stats['photos_collected'] += 1
+                            if save_entry(img, plate_crop, text, conf, batch_id):
+                                stats['plates_captured'] += 1
                 else:
                     st.info("No plates detected")
                 
@@ -297,14 +312,18 @@ with tab2:
                     if frame_count % 10 == 0:
                         results = reader.predict(frame)
                         
-                        for res in results:
-                            conf = res['conf']
-                            text = res['text']
-                            x1, y1, x2, y2 = res['box']
-                            plate_crop = frame[y1:y2, x1:x2]
+                        if results:
+                            # Unique batch ID for this frame highlight
+                            batch_id = f"vid_{datetime.now().strftime('%H%M%S')}_f{frame_count}"
                             
-                            if save_to_dataset(plate_crop, text, conf):
-                                collected_count += 1
+                            for res in results:
+                                conf = res['conf']
+                                text = res['text']
+                                x1, y1, x2, y2 = res['box']
+                                plate_crop = frame[y1:y2, x1:x2]
+                                
+                                if save_entry(frame, plate_crop, text, conf, batch_id):
+                                    collected_count += 1
                         
                         progress_bar.progress(min(frame_count / total_frames, 1.0))
                 
@@ -312,12 +331,11 @@ with tab2:
                 if os.path.exists(temp_video):
                     os.remove(temp_video)
                 
-                st.success(f"✅ Video processed!\n\n📥 Collected {collected_count} uncertain plates for dataset")
+                st.success(f"✅ Video Processed! Archived {collected_count} plates.")
                 
                 # Update stats
                 stats['total_uploads'] += 1
-                stats['videos_processed'] += 1
-                stats['photos_collected'] += collected_count
+                stats['plates_captured'] += collected_count
                 save_stats(stats)
                 st.session_state.processed_files.add(file_id)
                 st.rerun()
@@ -327,51 +345,60 @@ with tab2:
 # ---------------------------------------------------------------------
 # TAB 3: Admin Panel
 # ---------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# TAB 3: Admin Panel
+# ---------------------------------------------------------------------
 with tab3:
     if check_password():
         st.success(f"✅ Logged in as {ADMIN_USER}")
         
         # Download Dataset Button
-        if st.button("📦 Download Full Dataset"):
+        if st.button("📦 Download Full Dataset (Images + Metadata)"):
             # Create ZIP
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                for file in LOW_CONF_DIR.glob("*"):
-                    zip_file.write(file, file.name)
+                # Walk through the directory and add all files
+                for root, dirs, files in os.walk(DATASET_DIR):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, DATASET_DIR)
+                        zip_file.write(file_path, arcname)
             
             zip_buffer.seek(0)
             st.download_button(
                 label="⬇️ Download ZIP",
                 data=zip_buffer,
-                file_name=f"iraqi_plates_dataset_{datetime.now().strftime('%Y%m%d')}.zip",
+                file_name=f"iraqi_plates_dataset_v4.2_{datetime.now().strftime('%Y%m%d')}.zip",
                 mime="application/zip"
             )
         
         st.markdown("---")
-        st.markdown("### 📊 Dataset Preview")
+        st.markdown("### 📊 Dataset Preview (Crops)")
         
-        # Display collected images
-        images = list(LOW_CONF_DIR.glob("*.jpg"))
+        # Display collected crops
+        images = list(CROPS_DIR.glob("*.jpg"))
         if images:
-            cols = st.columns(4)
-            for idx, img_path in enumerate(images[:20]):  # Show first 20
-                with cols[idx % 4]:
+            cols = st.columns(6)
+            for idx, img_path in enumerate(images[:24]):  # Show first 24
+                with cols[idx % 6]:
                     img = cv2.imread(str(img_path))
                     st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), caption=img_path.name, use_column_width=True)
             
-            if len(images) > 20:
-                st.info(f"Showing 20 of {len(images)} images. Download full dataset to see all.")
+            if len(images) > 24:
+                st.info(f"Showing 24 of {len(images)} crops. Download full dataset to see all.")
         else:
-            st.info("No data collected yet. Upload photos/videos with confidence < 90%.")
+            st.info("No data collected yet.")
         
         # Reset Dataset (Danger Zone)
         st.markdown("---")
         st.markdown("### ⚠️ Danger Zone")
-        if st.button("🗑️ Reset All Data", type="secondary"):
-            if st.checkbox("I confirm deletion"):
-                import shutil
-                shutil.rmtree(DATASET_DIR)
-                init_dataset()
-                st.success("Dataset cleared!")
-                st.rerun()
+        col_risk1, col_risk2 = st.columns(2)
+        with col_risk1:
+            if st.button("🗑️ Reset All Data", type="secondary"):
+                if st.checkbox("I confirm deletion"):
+                    import shutil
+                    shutil.rmtree(DATASET_DIR)
+                    init_dataset()
+                    st.success("Dataset CLEARED! ✅")
+                    st.rerun()
 
