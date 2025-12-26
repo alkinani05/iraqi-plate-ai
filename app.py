@@ -192,36 +192,14 @@ st.markdown("""
 mode = st.radio("OPERATIONAL MODE", ["SCANNER", "ANALYSIS"], horizontal=True, label_visibility="collapsed")
 
 if mode == "SCANNER":
-    st.markdown("<div style='text-align:center; color:#666; font-size:0.8rem; margin-top:5px; margin-bottom:10px;'>Align vehicle plate within the frame</div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:center; color:#666; font-size:0.8rem; margin-top:5px; margin-bottom:10px;'>Allow camera access in your browser to start</div>", unsafe_allow_html=True)
     
-    # v3.5 REBUILD: MINIMALIST ROBUST CORE
-    # We strip all complex ICE logic and rely on the browser's default negotiation 
-    # assisted by the single most reliable STUN server.
-    
-    # 1. Simple Google STUN (Highest Success Rate globally)
-    RTC_CONFIG = RTCConfiguration({
-        "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-    })
-
-    # 2. Robust Media Constraints (Lower frame rate for stability)
-    MEDIA_CONSTRAINTS = {
-        "audio": False,
-        "video": {
-            "facingMode": "environment",
-            "width": {"ideal": 640},  # VGA
-            "height": {"ideal": 480}, # VGA
-            "frameRate": {"max": 24}  # Cap FPS to ease bandwidth
-        }
-    }
-
-    # 3. Streamer with specific key to force-reset component
+    # ✅ ORIGINAL WORKING CONFIG (Restored from commit 3a9bd61)
     webrtc_streamer(
-        key="pro-scanner-v3.5", 
-        mode=WebRtcMode.SENDRECV,
-        rtc_configuration=RTC_CONFIG,
-        media_stream_constraints=MEDIA_CONSTRAINTS,
+        key="plate-reader-live",
         video_processor_factory=PlateVideoTransformer,
-        async_processing=True,
+        media_stream_constraints={"video": True, "audio": False},
+        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
     )
 
 elif mode == "ANALYSIS":
