@@ -144,6 +144,12 @@ st.markdown("""
         text-shadow: 0 0 20px rgba(0,255,128,0.5);
     }
     
+    @keyframes pulse {
+        0% { opacity: 0.8; text-shadow: 0 0 20px rgba(0,255,128,0.6); }
+        50% { opacity: 1.0; text-shadow: 0 0 40px rgba(0,255,128,0.9); }
+        100% { opacity: 0.8; text-shadow: 0 0 20px rgba(0,255,128,0.6); }
+    }
+    
     .stats-container {
         background: rgba(0, 255, 128, 0.05);
         border: 2px solid #00ff80;
@@ -193,7 +199,26 @@ stats = init_dataset()
 # ---------------------------------------------------------------------
 # 📱 MAIN APP
 # ---------------------------------------------------------------------
-st.markdown("<h1>🚗 IRAQI PLATE COLLECTOR v4.2</h1>", unsafe_allow_html=True)
+st.markdown("""
+<div style="text-align: center; margin-bottom: 30px;">
+    <h1 style="margin-bottom: 0;">DATA COLLECTOR v4.2</h1>
+    <div style="
+        font-family: 'Outfit', sans-serif;
+        color: #666;
+        font-size: 1rem;
+        letter-spacing: 5px;
+        text-transform: uppercase;
+        margin-top: 10px;
+    ">
+        POWERED BY <span style="
+            color: #00ff80; 
+            font-weight: 700; 
+            text-shadow: 0 0 20px rgba(0,255,128,0.6);
+            animation: pulse 2s infinite;
+        ">ALGONEST AI</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # Public Stats Display
 col1, col2 = st.columns(2)
