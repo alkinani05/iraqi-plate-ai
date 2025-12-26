@@ -183,7 +183,7 @@ st.markdown("""
     <div class="status-bar">
         <span>SYSTEM: ONLINE</span>
         <span>NET: SECURE</span>
-        <span>VER: 3.1 PLATINUM</span>
+        <span>VER: 3.4 STABLE</span>
     </div>
     <h1>ALGONEST | SECURITY</h1>
 """, unsafe_allow_html=True)
