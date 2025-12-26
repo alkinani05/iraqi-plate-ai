@@ -316,35 +316,33 @@ tab1, tab2, tab3 = st.tabs(["📸 UPLOAD PHOTO", "🎬 UPLOAD VIDEO", "🔐 ADMI
 # ---------------------------------------------------------------------
 # TAB 1: Photo Upload
 # ---------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# TAB 1: Photo Upload
+# ---------------------------------------------------------------------
 with tab1:
     st.markdown("### Upload Iraqi License Plate Photo")
     uploaded_photo = st.file_uploader("Choose an image", type=['jpg', 'jpeg', 'png'], key="photo")
     
     if uploaded_photo:
-        # Create unique ID for this upload
-        file_id = f"{uploaded_photo.name}_{uploaded_photo.size}"
+        # Mobile UX Fix: Show preview immediately
+        st.image(uploaded_photo, caption="Preview", use_column_width=True)
         
-        if "processed_files" not in st.session_state:
-            st.session_state.processed_files = set()
+        if st.button("🚀 ANALYZE PHOTO", use_container_width=True):
+            # Create unique ID for this upload
+            file_id = f"{uploaded_photo.name}_{uploaded_photo.size}"
             
-        file_bytes = np.asarray(bytearray(uploaded_photo.read()), dtype=np.uint8)
-        img = cv2.imdecode(file_bytes, 1)
-        
-        with st.spinner("🤖 Analyzing & Archiving..."):
-            results = reader.predict(img)
-            viz = reader.visualize(img, results)
+            uploaded_photo.seek(0) # Reset pointer
+            file_bytes = np.asarray(bytearray(uploaded_photo.read()), dtype=np.uint8)
+            img = cv2.imdecode(file_bytes, 1)
             
-            col_img, col_res = st.columns([2, 1])
-            
-            with col_img:
+            with st.spinner("🤖 Analyzing & Archiving..."):
+                results = reader.predict(img)
+                viz = reader.visualize(img, results)
+                
                 st.image(cv2.cvtColor(viz, cv2.COLOR_BGR2RGB), use_column_width=True)
-            
-            with col_res:
+                
                 if results:
                     st.success(f"✅ Found {len(results)} plates!")
-                    
-                    # Generate a unique batch ID for this image
-                    # Use timestamp + hash of filename to be unique but deterministic
                     batch_id = datetime.now().strftime("%H%M%S") + "_" + hashlib.md5(file_id.encode()).hexdigest()[:6]
                     
                     for res in results:
@@ -354,20 +352,14 @@ with tab1:
                         plate_crop = img[y1:y2, x1:x2]
                         
                         st.write(f"**{text}** ({int(conf*100)}%)")
-                        
-                        # Only auto-save if new file
-                        if file_id not in st.session_state.processed_files:
-                            if save_entry(img, plate_crop, text, conf, batch_id):
-                                stats['plates_captured'] += 1
+                        if save_entry(img, plate_crop, text, conf, batch_id):
+                            stats['plates_captured'] += 1
                 else:
                     st.info("No plates detected")
                 
-                # Only update stats once per file
-                if file_id not in st.session_state.processed_files:
-                    stats['total_uploads'] += 1
-                    save_stats(stats)
-                    st.session_state.processed_files.add(file_id)
-                    st.rerun()
+                stats['total_uploads'] += 1
+                save_stats(stats)
+                st.balloons()
 
 # ---------------------------------------------------------------------
 # TAB 2: Video Upload
@@ -380,13 +372,8 @@ with tab2:
     uploaded_video = st.file_uploader("Upload Video File (MP4/MOV)", type=['mp4', 'avi', 'mov'], key="video")
     
     if uploaded_video:
-        file_id = f"{uploaded_video.name}_{uploaded_video.size}" # Unique ID
-        
-        if "processed_files" not in st.session_state:
-            st.session_state.processed_files = set()
-            
-        # Only process if new
-        if file_id not in st.session_state.processed_files:
+        st.info("Video uploaded! Click below to start processing.")
+        if st.button("🎬 START PROCESSING VIDEO", use_container_width=True):
             # Save temp video
             target_video_path = "temp_upload.mp4"
             with open(target_video_path, 'wb') as f:
