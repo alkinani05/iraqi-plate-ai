@@ -10,3 +10,4 @@ ultralytics
 arabic-reshaper
 python-bidi
 av
+yt-dlp
