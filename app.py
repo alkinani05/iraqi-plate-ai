@@ -319,15 +319,31 @@ tab1, tab2, tab3 = st.tabs(["📸 UPLOAD PHOTO", "🎬 UPLOAD VIDEO", "🔐 ADMI
 # ---------------------------------------------------------------------
 # TAB 1: Photo Upload
 # ---------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# TAB 1: Photo Upload
+# ---------------------------------------------------------------------
 with tab1:
     st.markdown("### Upload Iraqi License Plate Photo")
-    uploaded_photo = st.file_uploader("Choose an image", type=['jpg', 'jpeg', 'png'], key="photo")
+    
+    # Input Method Toggle
+    input_method = st.radio("Select Input:", ["📸 Take Live Photo", "📂 Upload File"], horizontal=True, label_visibility="collapsed")
+    
+    uploaded_photo = None
+    
+    if input_method == "📂 Upload File":
+        uploaded_photo = st.file_uploader("Choose an image", type=['jpg', 'jpeg', 'png'], key="photo_upload")
+    else:
+        uploaded_photo = st.camera_input("Take a photo of a car/plate")
     
     if uploaded_photo:
         # Mobile UX Fix: Show preview immediately
-        st.image(uploaded_photo, caption="Preview", use_column_width=True)
+        if input_method == "📂 Upload File":
+             st.image(uploaded_photo, caption="Preview", use_column_width=True)
         
-        if st.button("🚀 ANALYZE PHOTO", use_container_width=True):
+        # Auto-process camera input (smoother UX) or Button for file
+        process_trigger = True if input_method == "📸 Take Live Photo" else st.button("🚀 ANALYZE PHOTO", use_container_width=True)
+        
+        if process_trigger:
             # Create unique ID for this upload
             file_id = f"{uploaded_photo.name}_{uploaded_photo.size}"
             
@@ -359,7 +375,10 @@ with tab1:
                 
                 stats['total_uploads'] += 1
                 save_stats(stats)
-                st.balloons()
+                if input_method == "📸 Take Live Photo":
+                    st.success("Captured! Take another?")
+                else:
+                    st.balloons()
 
 # ---------------------------------------------------------------------
 # TAB 2: Video Upload
