@@ -301,54 +301,24 @@ with tab1:
 # TAB 2: Video Upload
 # ---------------------------------------------------------------------
 # ---------------------------------------------------------------------
-# TAB 2: Video Upload (File or YouTube)
+# TAB 2: Video Upload
 # ---------------------------------------------------------------------
 with tab2:
     st.markdown("### Process Iraqi License Plate Video")
+    uploaded_video = st.file_uploader("Upload Video File (MP4/MOV)", type=['mp4', 'avi', 'mov'], key="video")
     
-    # Input Type Toggle
-    video_source = st.radio("Select Source", ["📤 Upload File", "▶️ YouTube Link"], horizontal=True, label_visibility="collapsed")
-    
-    target_video_path = None
-    
-    if video_source == "📤 Upload File":
-        uploaded_video = st.file_uploader("Choose a video", type=['mp4', 'avi', 'mov'], key="video")
-        if uploaded_video:
-            target_video_path = "temp_upload.mp4"
-            with open(target_video_path, 'wb') as f:
-                f.write(uploaded_video.read())
-            file_id_base = f"{uploaded_video.name}_{uploaded_video.size}"
-
-    elif video_source == "▶️ YouTube Link":
-        yt_url = st.text_input("Paste YouTube URL", placeholder="https://youtube.com/watch?v=...")
-        if yt_url:
-            if st.button("Download & Process"):
-                try:
-                    import yt_dlp
-                    with st.spinner("📥 Downloading video from YouTube..."):
-                        ydl_opts = {
-                            'format': 'best[ext=mp4]',
-                            'outtmpl': 'temp_yt.%(ext)s',
-                            'overwrites': True,
-                            # Limit to 1 min to prevent abuse/timeout
-                            'download_ranges': yt_dlp.utils.download_range_func(None, [(0, 60)]) 
-                        }
-                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                            ydl.download([yt_url])
-                        target_video_path = "temp_yt.mp4"
-                        file_id_base = f"yt_{yt_url[-11:]}" # Use video ID
-                except Exception as e:
-                    st.error(f"Download Error: {e}")
-
-    # Common Processing Logic
-    if target_video_path and os.path.exists(target_video_path):
-        file_id = file_id_base # Unique ID logic
+    if uploaded_video:
+        file_id = f"{uploaded_video.name}_{uploaded_video.size}" # Unique ID
         
         if "processed_files" not in st.session_state:
             st.session_state.processed_files = set()
             
         # Only process if new
         if file_id not in st.session_state.processed_files:
+            # Save temp video
+            target_video_path = "temp_upload.mp4"
+            with open(target_video_path, 'wb') as f:
+                f.write(uploaded_video.read())
             
             with st.spinner("🎬 Processing video frames..."):
                 cap = cv2.VideoCapture(target_video_path)
