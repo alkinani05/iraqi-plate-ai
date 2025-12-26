@@ -431,16 +431,54 @@ def delete_entry(crop_filename):
     return True
 
 # ---------------------------------------------------------------------
+# ☁️ CLOUD SYNC LOGIC
+# ---------------------------------------------------------------------
+def sync_to_cloud():
+    """Uploads collected_dataset to Hugging Face Hub"""
+    from huggingface_hub import HfApi
+    # SECURITY FIX: Use Secret from Environment
+    TOKEN = os.environ.get("HF_TOKEN")
+    if not TOKEN:
+        return False, "❌ Error: HF_TOKEN secret not set in Space settings!"
+    DATASET_REPO = "husam05/iraqi-plate-dataset"
+    
+    api = HfApi(token=TOKEN)
+    
+    try:
+        api.upload_folder(
+            folder_path=str(DATASET_DIR),
+            repo_id=DATASET_REPO,
+            repo_type="dataset",
+            path_in_repo="data", # Store inside a data/ folder
+            commit_message=f"Auto-sync: {datetime.now().isoformat()}"
+        )
+        return True, "✅ Synced successfully!"
+    except Exception as e:
+        return False, f"❌ Sync Failed: {e}"
+
+# ---------------------------------------------------------------------
 # TAB 3: Admin Panel
 # ---------------------------------------------------------------------
 with tab3:
     if check_password():
         st.success(f"✅ Logged in as {ADMIN_USER}")
         
-        col_main1, col_main2 = st.columns([1, 1])
-        with col_main1:
+        # Dashboard Controls
+        st.markdown("### ☁️ Cloud Data Management")
+        col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
+        
+        with col_ctrl1:
+            if st.button("☁️ SYNC TO CLOUD", use_container_width=True):
+                with st.spinner("Uploading data to 'husam05/iraqi-plate-dataset'..."):
+                    success, msg = sync_to_cloud()
+                    if success:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
+        
+        with col_ctrl2:
             # Download Dataset Button
-            if st.button("📦 Download Full Dataset (Images + Metadata)"):
+            if st.button("📦 Download ZIP", use_container_width=True):
                 # Create ZIP
                 zip_buffer = io.BytesIO()
                 with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
@@ -453,18 +491,22 @@ with tab3:
                 
                 zip_buffer.seek(0)
                 st.download_button(
-                    label="⬇️ Download ZIP",
+                    label="⬇️ Click to Save ZIP",
                     data=zip_buffer,
                     file_name=f"iraqi_plates_dataset_v4.2_{datetime.now().strftime('%Y%m%d')}.zip",
-                    mime="application/zip"
+                    mime="application/zip",
+                    use_container_width=True
                 )
+        
+        with col_ctrl3:
+             st.metric("Pending Local Files", len(list(CROPS_DIR.glob("*.jpg"))))
 
         st.markdown("---")
         
         # Data Management Header
         col_head1, col_head2 = st.columns([3, 1])
         with col_head1:
-             st.markdown("### 🛠️ Manage Data")
+             st.markdown("### 🛠️ Review & Clean Data")
         with col_head2:
              show_all = st.checkbox("Show All Entries")
 
@@ -486,7 +528,7 @@ with tab3:
                     # Display Filename (truncated)
                     st.caption(f"{img_path.name[:10]}...")
                     # Delete Button
-                    if st.button("🗑️ DELETE", key=f"del_{img_path.name}"):
+                    if st.button("🗑️ DELETE", key=f"del_{img_path.name}", use_container_width=True):
                         delete_entry(img_path.name)
                         st.rerun()
             
