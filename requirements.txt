@@ -1,0 +1,12 @@
+
+streamlit
+streamlit-webrtc
+opencv-python-headless
+torch
+torchvision
+numpy
+Pillow
+ultralytics
+arabic-reshaper
+python-bidi
+av

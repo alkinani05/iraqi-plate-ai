@@ -1,0 +1,18 @@
+name: Sync to Hugging Face Hub
+on:
+  push:
+    branches: [main]
+
+jobs:
+  sync-to-hub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          lfs: true
+      - name: Push to hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        # Replace 'ALGONEST' and 'iraqi-plate-reader' with your actual HF username/space name
+        run: git push https://ALGONEST:$HF_TOKEN@huggingface.co/spaces/ALGONEST/iraqi-plate-reader main
