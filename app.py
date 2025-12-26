@@ -194,16 +194,12 @@ mode = st.radio("OPERATIONAL MODE", ["SCANNER", "ANALYSIS"], horizontal=True, la
 if mode == "SCANNER":
     st.markdown("<div style='text-align:center; color:#666; font-size:0.8rem; margin-top:5px; margin-bottom:10px;'>Align vehicle plate within the frame</div>", unsafe_allow_html=True)
     
-    # 🔥 EXTENSIVE ICE CONFIGURATION FOR CONNECTION FIX
-    # We add ample free STUN servers to maximize connection probability
+    # 🔥 HIGH-PERFORMANCE LOW-LATENCY CONFIG
+    # Optimized for Mobile 4G/LTE networks in Iraq
     RTC_CONFIG = RTCConfiguration({
         "iceServers": [
             {"urls": ["stun:stun.l.google.com:19302"]},
             {"urls": ["stun:stun1.l.google.com:19302"]},
-            {"urls": ["stun:stun2.l.google.com:19302"]},
-            {"urls": ["stun:stun.global.calls.net:3478"]},
-            {"urls": ["stun:stun.framasoft.org:3478"]},
-            {"urls": ["stun:stun.services.mozilla.com"]},
         ]
     })
     
@@ -215,8 +211,11 @@ if mode == "SCANNER":
             "audio": False,
             "video": {
                 "facingMode": "environment",
-                "width": {"ideal": 1280},
-                "height": {"ideal": 720},
+                # VGA Resolution (640x480) is the GOLDEN STANDARD for WebRTC on 4G.
+                # HD (720p) often hangs the connection handshake on slower networks.
+                "width": {"ideal": 640},
+                "height": {"ideal": 480},
+                "frameRate": {"ideal": 30, "max": 60}
             }
         },
         video_processor_factory=PlateVideoTransformer,
