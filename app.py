@@ -194,13 +194,21 @@ mode = st.radio("OPERATIONAL MODE", ["SCANNER", "ANALYSIS"], horizontal=True, la
 if mode == "SCANNER":
     st.markdown("<div style='text-align:center; color:#666; font-size:0.8rem; margin-top:5px; margin-bottom:10px;'>Align vehicle plate within the frame</div>", unsafe_allow_html=True)
     
-    # 🔥 HIGH-PERFORMANCE LOW-LATENCY CONFIG
-    # Optimized for Mobile 4G/LTE networks in Iraq
+    # 🔥 ULTIMATE CONNECTIVITY FIX
+    # 1. Pool Size 10: Pre-fetches ICE candidates to speed up handshake
+    # 2. Multiple robust STUN providers (Google, Twilio, Maven)
     RTC_CONFIG = RTCConfiguration({
         "iceServers": [
             {"urls": ["stun:stun.l.google.com:19302"]},
             {"urls": ["stun:stun1.l.google.com:19302"]},
-        ]
+            {"urls": ["stun:stun2.l.google.com:19302"]},
+            {"urls": ["stun:stun3.l.google.com:19302"]},
+            {"urls": ["stun:stun4.l.google.com:19302"]},
+            {"urls": ["stun:stun.services.mozilla.com"]},
+            {"urls": ["stun:global.stun.twilio.com:3478"]},
+        ],
+        "iceCandidatePoolSize": 10,
+        "iceTransportPolicy": "all",
     })
     
     webrtc_ctx = webrtc_streamer(
