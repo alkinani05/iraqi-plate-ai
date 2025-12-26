@@ -194,41 +194,40 @@ mode = st.radio("OPERATIONAL MODE", ["SCANNER", "ANALYSIS"], horizontal=True, la
 if mode == "SCANNER":
     st.markdown("<div style='text-align:center; color:#666; font-size:0.8rem; margin-top:5px; margin-bottom:10px;'>Align vehicle plate within the frame</div>", unsafe_allow_html=True)
     
-    # 🔥 ULTIMATE CONNECTIVITY FIX
-    # 1. Pool Size 10: Pre-fetches ICE candidates to speed up handshake
-    # 2. Multiple robust STUN providers (Google, Twilio, Maven)
+    # 🔥 STABILITY FIX: REDUCED POOL SIZE
+    # The 'NoneType has no attribute sendto' error happens when
+    # the socket closes while STUN is still retrying.
+    # We reduce pool size to 1 to prevent socket saturation.
     RTC_CONFIG = RTCConfiguration({
         "iceServers": [
             {"urls": ["stun:stun.l.google.com:19302"]},
-            {"urls": ["stun:stun1.l.google.com:19302"]},
-            {"urls": ["stun:stun2.l.google.com:19302"]},
-            {"urls": ["stun:stun3.l.google.com:19302"]},
-            {"urls": ["stun:stun4.l.google.com:19302"]},
-            {"urls": ["stun:stun.services.mozilla.com"]},
             {"urls": ["stun:global.stun.twilio.com:3478"]},
         ],
-        "iceCandidatePoolSize": 10,
+        "iceCandidatePoolSize": 0, # DISABLED PRE-FETCH to prevent race condition
         "iceTransportPolicy": "all",
     })
     
-    webrtc_ctx = webrtc_streamer(
-        key="plate-scanner-advanced",
-        mode=WebRtcMode.SENDRECV,
-        rtc_configuration=RTC_CONFIG,
-        media_stream_constraints={
-            "audio": False,
-            "video": {
-                "facingMode": "environment",
-                # VGA Resolution (640x480) is the GOLDEN STANDARD for WebRTC on 4G.
-                # HD (720p) often hangs the connection handshake on slower networks.
-                "width": {"ideal": 640},
-                "height": {"ideal": 480},
-                "frameRate": {"ideal": 30, "max": 60}
-            }
-        },
-        video_processor_factory=PlateVideoTransformer,
-        async_processing=True,
-    )
+    # 🛡️ SAFE STREAMER WRAPPER
+    try:
+        webrtc_ctx = webrtc_streamer(
+            key="plate-scanner-stable",
+            mode=WebRtcMode.SENDRECV,
+            rtc_configuration=RTC_CONFIG,
+            media_stream_constraints={
+                "audio": False,
+                "video": {
+                    "facingMode": "environment",
+                    "width": {"ideal": 640},
+                    "height": {"ideal": 480},
+                    "frameRate": {"ideal": 30, "max": 60}
+                }
+            },
+            video_processor_factory=PlateVideoTransformer,
+            async_processing=True,
+        )
+    except Exception as e:
+        st.error(f"Stream Error: {e}")
+        webrtc_ctx = None
 
 elif mode == "ANALYSIS":
     st.markdown("### 🖼️ STATIC ANALYSIS")
