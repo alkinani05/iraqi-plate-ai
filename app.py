@@ -2,67 +2,120 @@
 import streamlit as st
 import cv2
 import numpy as np
-import threading
-import time
 import os
 import sys
+import json
+import hashlib
+from datetime import datetime
+from pathlib import Path
+import zipfile
+import io
 
 # Add current directory to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from smart_plate_reader import PlateReader
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode, RTCConfiguration
-import av
+
+# ---------------------------------------------------------------------
+# 🔐 AUTHENTICATION
+# ---------------------------------------------------------------------
+ADMIN_USER = "husam"
+ADMIN_PASS_HASH = hashlib.sha256("987987987".encode()).hexdigest()
+
+def check_password():
+    """Returns True if password is correct"""
+    def password_entered():
+        if (st.session_state["username"] == ADMIN_USER and 
+            hashlib.sha256(st.session_state["password"].encode()).hexdigest() == ADMIN_PASS_HASH):
+            st.session_state["authenticated"] = True
+            del st.session_state["password"]  # Don't store password
+        else:
+            st.session_state["authenticated"] = False
+
+    if "authenticated" not in st.session_state:
+        st.text_input("Username", key="username")
+        st.text_input("Password", type="password", key="password", on_change=password_entered)
+        return False
+    elif not st.session_state["authenticated"]:
+        st.text_input("Username", key="username")
+        st.text_input("Password", type="password", key="password", on_change=password_entered)
+        st.error("🔒 Incorrect credentials")
+        return False
+    else:
+        return True
+
+# ---------------------------------------------------------------------
+# 📁 DATASET MANAGEMENT
+# ---------------------------------------------------------------------
+DATASET_DIR = Path("collected_dataset")
+LOW_CONF_DIR = DATASET_DIR / "low_confidence"
+STATS_FILE = DATASET_DIR / "stats.json"
+
+def init_dataset():
+    """Initialize dataset directories and stats file"""
+    DATASET_DIR.mkdir(exist_ok=True)
+    LOW_CONF_DIR.mkdir(exist_ok=True)
+    
+    if not STATS_FILE.exists():
+        stats = {
+            "total_uploads": 0,
+            "photos_collected": 0,
+            "videos_processed": 0,
+            "last_updated": datetime.now().isoformat()
+        }
+        save_stats(stats)
+    return load_stats()
+
+def load_stats():
+    """Load statistics"""
+    if STATS_FILE.exists():
+        with open(STATS_FILE, 'r') as f:
+            return json.load(f)
+    return {"total_uploads": 0, "photos_collected": 0, "videos_processed": 0}
+
+def save_stats(stats):
+    """Save statistics"""
+    stats["last_updated"] = datetime.now().isoformat()
+    with open(STATS_FILE, 'w') as f:
+        json.dump(stats, f, indent=2)
+
+def save_to_dataset(img, text, confidence):
+    """Save image to dataset if confidence < 90%"""
+    if confidence >= 0.90:
+        return False
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    filename = f"plate_{timestamp}_conf{int(confidence*100)}.jpg"
+    filepath = LOW_CONF_DIR / filename
+    
+    cv2.imwrite(str(filepath), img)
+    
+    # Save metadata
+    metadata_file = LOW_CONF_DIR / "metadata.csv"
+    with open(metadata_file, 'a') as f:
+        f.write(f"{filename},{text},{confidence:.3f},{datetime.now().isoformat()}\n")
+    
+    return True
 
 # ---------------------------------------------------------------------
 # ⚙️ CONFIG & PAGE SETUP
 # ---------------------------------------------------------------------
 st.set_page_config(
-    page_title="Algonest AI | Scanner", 
-    page_icon="👁️", 
-    layout="centered", # Centered is better for mobile-first feel
+    page_title="Iraqi Plate Collector", 
+    page_icon="🚗", 
+    layout="wide",
     initial_sidebar_state="collapsed"
 )
 
 # ---------------------------------------------------------------------
-# 🎨 STAR-SYSTEM DESIGN (CSS)
+# 🎨 CSS
 # ---------------------------------------------------------------------
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Outfit:wght@400;700&display=swap');
     
-    body {
-        background-color: #000;
-        color: #fff;
-    }
-    
     .stApp {
-        background: #000; /* Pure Black for OLED */
-    }
-
-    /* 🔥 SCANNER MODE TOGGLE */
-    .stRadio > div {
-        flex-direction: row;
-        justify-content: center;
-        background: #111;
-        border-radius: 12px;
-        padding: 4px;
-        border: 1px solid #333;
-    }
-    
-    div[data-baseweb="radio"] > div {
-        background: transparent;
-        border-radius: 8px;
-        color: #888;
-        padding: 5px 15px;
-        font-family: 'Outfit', sans-serif;
-    }
-    
-    div[aria-checked="true"] {
-        background-color: #00ff80 !important; /* Cyber Green */
-        color: #000 !important;
-        font-weight: bold;
-        box-shadow: 0 0 10px rgba(0,255,128,0.5);
+        background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
     }
     
     h1 {
@@ -70,42 +123,34 @@ st.markdown("""
         color: #00ff80;
         text-align: center;
         text-transform: uppercase;
-        letter-spacing: 2px;
-        font-size: 1.8rem;
-        margin-bottom: 0px;
-        text-shadow: 0 0 10px rgba(0,255,128,0.4);
+        letter-spacing: 3px;
+        text-shadow: 0 0 20px rgba(0,255,128,0.5);
     }
     
-    .status-bar {
+    .stats-container {
+        background: rgba(0, 255, 128, 0.05);
+        border: 2px solid #00ff80;
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+        margin: 20px 0;
+    }
+    
+    .stat-number {
+        font-size: 3rem;
+        font-weight: bold;
+        color: #00ff80;
         font-family: 'Share Tech Mono', monospace;
-        display: flex;
-        justify-content: space-between;
-        padding: 5px 10px;
-        background: #0a0a0a;
-        border-bottom: 1px solid #333;
-        font-size: 0.8rem;
-        color: #666;
-        margin-bottom: 20px;
-    }
-
-    /* 📸 VIEWFINDER STYLE */
-    video {
-        border-radius: 4px !important;
-        border: 2px solid #333 !important;
-        box-shadow: 0 0 30px rgba(0,255,128,0.1);
-        width: 100% !important;
-        max-height: 80vh;
-    }
-
-    /* 🧠 Image Result Optimization */
-    .stImage > img {
-        border-radius: 8px;
-        border: 1px solid #333;
     }
     
-    /* Hide Junk */
+    .stat-label {
+        font-size: 0.9rem;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+    }
+    
     #MainMenu, footer, header {visibility: hidden;}
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -122,103 +167,190 @@ except Exception as e:
     st.error(f"System Error: {e}")
     st.stop()
 
-# ---------------------------------------------------------------------
-# 📹 VIDEO PROCESSOR
-# ---------------------------------------------------------------------
-class PlateVideoTransformer(VideoTransformerBase):
-    def __init__(self):
-        self.reader = load_model()
-        self.lock = threading.Lock()
-        self.frame_count = 0
-        self.last_results = []
-        self.fps = 0
-        self.prev_time = 0
-
-    def recv(self, frame):
-        current_time = time.time()
-        img = frame.to_ndarray(format="bgr24")
-        
-        # FPS Calc
-        if self.prev_time > 0:
-            dt = current_time - self.prev_time
-            if dt > 0: self.fps = 0.9 * self.fps + 0.1 * (1.0 / dt)
-        self.prev_time = current_time
-
-        # Mobile Optimization
-        height, width = img.shape[:2]
-        target_width = 800
-        scale = 1.0
-        
-        if width > target_width:
-            scale = target_width / width
-            new_height = int(height * scale)
-            img_small = cv2.resize(img, (target_width, new_height))
-        else:
-            img_small = img
-
-        self.frame_count += 1
-        run_ai = (self.frame_count % 3 == 0)
-        results = self.last_results
-        
-        if run_ai:
-            with self.lock:
-                small_results = self.reader.predict(img_small)
-                results = []
-                for res in small_results:
-                    x1, y1, x2, y2 = res['box']
-                    results.append({
-                        'box': [int(x1/scale), int(y1/scale), int(x2/scale), int(y2/scale)],
-                        'text': res['text'],
-                        'conf': res['conf']
-                    })
-                self.last_results = results
-        
-        annotated_img = self.reader.visualize(img, results, fps=self.fps)
-        return av.VideoFrame.from_ndarray(annotated_img, format="bgr24")
+# Initialize dataset
+stats = init_dataset()
 
 # ---------------------------------------------------------------------
-# 📱 UI LAYOUT
+# 📱 MAIN APP
 # ---------------------------------------------------------------------
-st.markdown("""
-    <div class="status-bar">
-        <span>SYSTEM: ONLINE</span>
-        <span>NET: SECURE</span>
-        <span>VER: 3.5 CLEAN CORE</span>
+st.markdown("<h1>🚗 IRAQI PLATE COLLECTOR</h1>", unsafe_allow_html=True)
+
+# Public Stats Display
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.markdown(f"""
+    <div class='stats-container'>
+        <div class='stat-number'>{stats['total_uploads']}</div>
+        <div class='stat-label'>Total Uploads</div>
     </div>
-    <h1>ALGONEST | SECURITY</h1>
-""", unsafe_allow_html=True)
-
-# Advanced Mode Toggle
-mode = st.radio("OPERATIONAL MODE", ["SCANNER", "ANALYSIS"], horizontal=True, label_visibility="collapsed")
-
-if mode == "SCANNER":
-    st.markdown("<div style='text-align:center; color:#666; font-size:0.8rem; margin-top:5px; margin-bottom:10px;'>Allow camera access in your browser to start</div>", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
     
-    # ✅ ORIGINAL WORKING CONFIG (Restored from commit 3a9bd61)
-    webrtc_streamer(
-        key="plate-reader-live",
-        video_processor_factory=PlateVideoTransformer,
-        media_stream_constraints={"video": True, "audio": False},
-        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
-    )
-
-elif mode == "ANALYSIS":
-    st.markdown("### 🖼️ STATIC ANALYSIS")
-    uploaded = st.file_uploader("Upload Surveillance Image", type=['jpg','png','jpeg'])
+with col2:
+    st.markdown(f"""
+    <div class='stats-container'>
+        <div class='stat-number'>{stats['photos_collected']}</div>
+        <div class='stat-label'>Dataset Images</div>
+    </div>
+    """, unsafe_allow_html=True)
     
-    if uploaded:
-        col1, col2, col3 = st.columns([1, 6, 1]) # Column layout to center and control size
-        with col2:
-            file_bytes = np.asarray(bytearray(uploaded.read()), dtype=np.uint8)
-            img = cv2.imdecode(file_bytes, 1)
+with col3:
+    st.markdown(f"""
+    <div class='stats-container'>
+        <div class='stat-number'>{stats['videos_processed']}</div>
+        <div class='stat-label'>Videos Processed</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# Main Tabs
+tab1, tab2, tab3 = st.tabs(["📸 UPLOAD PHOTO", "🎬 UPLOAD VIDEO", "🔐 ADMIN"])
+
+# ---------------------------------------------------------------------
+# TAB 1: Photo Upload
+# ---------------------------------------------------------------------
+with tab1:
+    st.markdown("### Upload Iraqi License Plate Photo")
+    uploaded_photo = st.file_uploader("Choose an image", type=['jpg', 'jpeg', 'png'], key="photo")
+    
+    if uploaded_photo:
+        file_bytes = np.asarray(bytearray(uploaded_photo.read()), dtype=np.uint8)
+        img = cv2.imdecode(file_bytes, 1)
+        
+        with st.spinner("🤖 Analyzing..."):
+            results = reader.predict(img)
+            viz = reader.visualize(img, results)
             
-            with st.spinner("DECRYPTING VISUAL DATA..."):
-                results = reader.predict(img)
-                viz = reader.visualize(img, results)
-                
-                # Dynamic sizing based on aspect ratio
-                st.image(cv2.cvtColor(viz, cv2.COLOR_BGR2RGB), use_column_width=True, caption=f"Processing Complete: {len(results)} Targets Found")
-                
+            col_img, col_res = st.columns([2, 1])
+            
+            with col_img:
+                st.image(cv2.cvtColor(viz, cv2.COLOR_BGR2RGB), use_column_width=True)
+            
+            with col_res:
                 if results:
-                    st.success(f"TARGET ACQUIRED: {results[0]['text']}")
+                    for res in results:
+                        conf = res['conf']
+                        text = res['text']
+                        
+                        if conf >= 0.90:
+                            st.success(f"✅ **{text}**\n\nConfidence: {int(conf*100)}%")
+                        else:
+                            st.warning(f"⚠️ **{text}**\n\nConfidence: {int(conf*100)}%\n\n📥 Saved to dataset")
+                        
+                        # Auto-save to dataset
+                        x1, y1, x2, y2 = res['box']
+                        plate_crop = img[y1:y2, x1:x2]
+                        if save_to_dataset(plate_crop, text, conf):
+                            stats['photos_collected'] += 1
+                else:
+                    st.info("No plates detected")
+                
+                # Update stats
+                stats['total_uploads'] += 1
+                save_stats(stats)
+                st.rerun()
+
+# ---------------------------------------------------------------------
+# TAB 2: Video Upload
+# ---------------------------------------------------------------------
+with tab2:
+    st.markdown("### Upload Iraqi License Plate Video")
+    uploaded_video = st.file_uploader("Choose a video", type=['mp4', 'avi', 'mov'], key="video")
+    
+    if uploaded_video:
+        # Save temp video
+        temp_video = "temp_upload.mp4"
+        with open(temp_video, 'wb') as f:
+            f.write(uploaded_video.read())
+        
+        with st.spinner("🎬 Processing video..."):
+            cap = cv2.VideoCapture(temp_video)
+            frame_count = 0
+            collected_count = 0
+            
+            progress_bar = st.progress(0)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                
+                frame_count += 1
+                
+                # Process every 10th frame
+                if frame_count % 10 == 0:
+                    results = reader.predict(frame)
+                    
+                    for res in results:
+                        conf = res['conf']
+                        text = res['text']
+                        x1, y1, x2, y2 = res['box']
+                        plate_crop = frame[y1:y2, x1:x2]
+                        
+                        if save_to_dataset(plate_crop, text, conf):
+                            collected_count += 1
+                    
+                    progress_bar.progress(min(frame_count / total_frames, 1.0))
+            
+            cap.release()
+            os.remove(temp_video)
+            
+            st.success(f"✅ Video processed!\n\n📥 Collected {collected_count} uncertain plates for dataset")
+            
+            # Update stats
+            stats['total_uploads'] += 1
+            stats['videos_processed'] += 1
+            stats['photos_collected'] += collected_count
+            save_stats(stats)
+            st.rerun()
+
+# ---------------------------------------------------------------------
+# TAB 3: Admin Panel
+# ---------------------------------------------------------------------
+with tab3:
+    if check_password():
+        st.success(f"✅ Logged in as {ADMIN_USER}")
+        
+        # Download Dataset Button
+        if st.button("📦 Download Full Dataset"):
+            # Create ZIP
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                for file in LOW_CONF_DIR.glob("*"):
+                    zip_file.write(file, file.name)
+            
+            zip_buffer.seek(0)
+            st.download_button(
+                label="⬇️ Download ZIP",
+                data=zip_buffer,
+                file_name=f"iraqi_plates_dataset_{datetime.now().strftime('%Y%m%d')}.zip",
+                mime="application/zip"
+            )
+        
+        st.markdown("---")
+        st.markdown("### 📊 Dataset Preview")
+        
+        # Display collected images
+        images = list(LOW_CONF_DIR.glob("*.jpg"))
+        if images:
+            cols = st.columns(4)
+            for idx, img_path in enumerate(images[:20]):  # Show first 20
+                with cols[idx % 4]:
+                    img = cv2.imread(str(img_path))
+                    st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), caption=img_path.name, use_column_width=True)
+            
+            if len(images) > 20:
+                st.info(f"Showing 20 of {len(images)} images. Download full dataset to see all.")
+        else:
+            st.info("No data collected yet. Upload photos/videos with confidence < 90%.")
+        
+        # Reset Dataset (Danger Zone)
+        st.markdown("---")
+        st.markdown("### ⚠️ Danger Zone")
+        if st.button("🗑️ Reset All Data", type="secondary"):
+            if st.checkbox("I confirm deletion"):
+                import shutil
+                shutil.rmtree(DATASET_DIR)
+                init_dataset()
+                st.success("Dataset cleared!")
+                st.rerun()
 
