@@ -331,7 +331,7 @@ with tab2:
                             'outtmpl': 'temp_yt.%(ext)s',
                             'overwrites': True,
                             # Limit to 1 min to prevent abuse/timeout
-                            'download_ranges': yt_dlp.utils.download_range_func(None, [(0, 60)], force_keyframes=False) 
+                            'download_ranges': yt_dlp.utils.download_range_func(None, [(0, 60)]) 
                         }
                         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                             ydl.download([yt_url])
