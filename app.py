@@ -212,6 +212,12 @@ with tab1:
     uploaded_photo = st.file_uploader("Choose an image", type=['jpg', 'jpeg', 'png'], key="photo")
     
     if uploaded_photo:
+        # Create unique ID for this upload
+        file_id = f"{uploaded_photo.name}_{uploaded_photo.size}"
+        
+        if "processed_files" not in st.session_state:
+            st.session_state.processed_files = set()
+            
         file_bytes = np.asarray(bytearray(uploaded_photo.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, 1)
         
@@ -235,18 +241,21 @@ with tab1:
                         else:
                             st.warning(f"⚠️ **{text}**\n\nConfidence: {int(conf*100)}%\n\n📥 Saved to dataset")
                         
-                        # Auto-save to dataset
-                        x1, y1, x2, y2 = res['box']
-                        plate_crop = img[y1:y2, x1:x2]
-                        if save_to_dataset(plate_crop, text, conf):
-                            stats['photos_collected'] += 1
+                        # Only auto-save if new file
+                        if file_id not in st.session_state.processed_files:
+                            x1, y1, x2, y2 = res['box']
+                            plate_crop = img[y1:y2, x1:x2]
+                            if save_to_dataset(plate_crop, text, conf):
+                                stats['photos_collected'] += 1
                 else:
                     st.info("No plates detected")
                 
-                # Update stats
-                stats['total_uploads'] += 1
-                save_stats(stats)
-                st.rerun()
+                # Only update stats once per file
+                if file_id not in st.session_state.processed_files:
+                    stats['total_uploads'] += 1
+                    save_stats(stats)
+                    st.session_state.processed_files.add(file_id)
+                    st.rerun()
 
 # ---------------------------------------------------------------------
 # TAB 2: Video Upload
@@ -256,52 +265,64 @@ with tab2:
     uploaded_video = st.file_uploader("Choose a video", type=['mp4', 'avi', 'mov'], key="video")
     
     if uploaded_video:
-        # Save temp video
-        temp_video = "temp_upload.mp4"
-        with open(temp_video, 'wb') as f:
-            f.write(uploaded_video.read())
+        file_id = f"{uploaded_video.name}_{uploaded_video.size}"
         
-        with st.spinner("🎬 Processing video..."):
-            cap = cv2.VideoCapture(temp_video)
-            frame_count = 0
-            collected_count = 0
+        if "processed_files" not in st.session_state:
+            st.session_state.processed_files = set()
             
-            progress_bar = st.progress(0)
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        # Only process if new
+        if file_id not in st.session_state.processed_files:
+            # Save temp video
+            temp_video = "temp_upload.mp4"
+            with open(temp_video, 'wb') as f:
+                f.write(uploaded_video.read())
             
-            while cap.isOpened():
-                ret, frame = cap.read()
-                if not ret:
-                    break
+            with st.spinner("🎬 Processing video..."):
+                cap = cv2.VideoCapture(temp_video)
+                frame_count = 0
+                collected_count = 0
                 
-                frame_count += 1
+                progress_bar = st.progress(0)
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                if total_frames <= 0: total_frames = 1
                 
-                # Process every 10th frame
-                if frame_count % 10 == 0:
-                    results = reader.predict(frame)
+                while cap.isOpened():
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
                     
-                    for res in results:
-                        conf = res['conf']
-                        text = res['text']
-                        x1, y1, x2, y2 = res['box']
-                        plate_crop = frame[y1:y2, x1:x2]
+                    frame_count += 1
+                    
+                    # Process every 10th frame
+                    if frame_count % 10 == 0:
+                        results = reader.predict(frame)
                         
-                        if save_to_dataset(plate_crop, text, conf):
-                            collected_count += 1
-                    
-                    progress_bar.progress(min(frame_count / total_frames, 1.0))
-            
-            cap.release()
-            os.remove(temp_video)
-            
-            st.success(f"✅ Video processed!\n\n📥 Collected {collected_count} uncertain plates for dataset")
-            
-            # Update stats
-            stats['total_uploads'] += 1
-            stats['videos_processed'] += 1
-            stats['photos_collected'] += collected_count
-            save_stats(stats)
-            st.rerun()
+                        for res in results:
+                            conf = res['conf']
+                            text = res['text']
+                            x1, y1, x2, y2 = res['box']
+                            plate_crop = frame[y1:y2, x1:x2]
+                            
+                            if save_to_dataset(plate_crop, text, conf):
+                                collected_count += 1
+                        
+                        progress_bar.progress(min(frame_count / total_frames, 1.0))
+                
+                cap.release()
+                if os.path.exists(temp_video):
+                    os.remove(temp_video)
+                
+                st.success(f"✅ Video processed!\n\n📥 Collected {collected_count} uncertain plates for dataset")
+                
+                # Update stats
+                stats['total_uploads'] += 1
+                stats['videos_processed'] += 1
+                stats['photos_collected'] += collected_count
+                save_stats(stats)
+                st.session_state.processed_files.add(file_id)
+                st.rerun()
+        else:
+            st.info("✅ Video already processed. Check stats above.")
 
 # ---------------------------------------------------------------------
 # TAB 3: Admin Panel
