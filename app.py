@@ -331,10 +331,12 @@ tab1, tab2, tab3 = st.tabs(["📸 UPLOAD PHOTO", "🎬 UPLOAD VIDEO", "🔐 ADMI
 with tab1:
     st.markdown("### Upload Iraqi License Plate Photo")
     
-    # Combined Input (Mobile Native: Camera + Gallery)
-    uploaded_photo = st.file_uploader("📸 Take Photo / 📂 Upload Image", type=['jpg', 'jpeg', 'png'], key="photo_upload")
+    # Form for reliable mobile submission
+    with st.form("upload_form"):
+        uploaded_photo = st.file_uploader("📸 Take Photo / 📂 Upload Image", type=['jpg', 'jpeg', 'png'])
+        submitted = st.form_submit_button("🚀 ANALYZE IMAGE", use_container_width=True)
     
-    if uploaded_photo:
+    if submitted and uploaded_photo:
         # Create unique ID for this upload
         file_id = f"{uploaded_photo.name}_{uploaded_photo.size}"
         
@@ -399,6 +401,8 @@ with tab1:
                         stats['total_uploads'] += 1
                         save_stats(stats)
                         st.session_state.processed_files.add(file_id)
+    elif submitted and not uploaded_photo:
+        st.warning("⚠️ Please select or take a photo first!")
 
 # ---------------------------------------------------------------------
 # TAB 2: Video Upload
