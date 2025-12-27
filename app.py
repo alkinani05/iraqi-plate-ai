@@ -342,13 +342,21 @@ with tab1:
         st.image(uploaded_photo, caption="Preview", use_column_width=True)
         
         #  SEAMLESS PROCESSING (No Button Required)
-        uploaded_photo.seek(0)
-        file_bytes = np.asarray(bytearray(uploaded_photo.read()), dtype=np.uint8)
-        img = cv2.imdecode(file_bytes, 1)
+        try:
+            from PIL import Image, ImageOps
+            uploaded_photo.seek(0)
+            image_pil = Image.open(uploaded_photo)
+            # 🔄 Fix Mobile Rotation (EXIF)
+            image_pil = ImageOps.exif_transpose(image_pil)
+            # Convert PIL (RGB) to OpenCV (BGR)
+            img = np.array(image_pil)
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        except Exception as e:
+             st.error(f"❌ Error loading image: {e}")
+             img = None
         
-        # 🛡️ ERROR HANDLING: Check if image decoded correctly
         if img is None:
-            st.error("❌ Error: Could not decode image. Please use a valid JPG/PNG file.")
+            st.error("❌ Error: Could not understand image format.")
         else:
             with st.spinner("🤖 Analyzing..."):
                 results = reader.predict(img)
