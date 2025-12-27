@@ -331,17 +331,24 @@ tab1, tab2, tab3 = st.tabs(["📸 UPLOAD PHOTO", "🎬 UPLOAD VIDEO", "🔐 ADMI
 with tab1:
     st.markdown("### Upload Iraqi License Plate Photo")
     
-    # Form for reliable mobile submission
-    with st.form("upload_form"):
-        uploaded_photo = st.file_uploader("📸 Take Photo / 📂 Upload Image", type=['jpg', 'jpeg', 'png'])
-        submitted = st.form_submit_button("🚀 ANALYZE IMAGE", use_container_width=True)
+    # Direct Upload (No Form) for better mobile feedback
+    uploaded_photo = st.file_uploader("📸 Take Photo / 📂 Upload Image", type=['jpg', 'jpeg', 'png'])
+    
+    if uploaded_photo:
+        # Show button ONLY when file is present
+        if st.button("🚀 ANALYZE IMAGE", use_container_width=True, type="primary"):
+            submitted = True
+        else:
+            submitted = False
+    else:
+        submitted = False
     
     if submitted and uploaded_photo:
         # Create unique ID for this upload
         file_id = f"{uploaded_photo.name}_{uploaded_photo.size}"
         
-        # Show preview
-        st.image(uploaded_photo, caption="Preview", use_column_width=True)
+        # Show preview immediately upon upload
+        st.image(uploaded_photo, caption="Uploaded Image", use_column_width=True)
         
         #  SEAMLESS PROCESSING (No Button Required)
         try:
@@ -401,8 +408,7 @@ with tab1:
                         stats['total_uploads'] += 1
                         save_stats(stats)
                         st.session_state.processed_files.add(file_id)
-    elif submitted and not uploaded_photo:
-        st.warning("⚠️ Please select or take a photo first!")
+
 
 # ---------------------------------------------------------------------
 # TAB 2: Video Upload
