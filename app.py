@@ -331,23 +331,15 @@ tab1, tab2, tab3 = st.tabs(["📸 UPLOAD PHOTO", "🎬 UPLOAD VIDEO", "🔐 ADMI
 with tab1:
     st.markdown("### Upload Iraqi License Plate Photo")
     
-    # Input Method Toggle
-    input_method = st.radio("Select Input:", ["📸 Take Live Photo", "📂 Upload File"], horizontal=True, label_visibility="collapsed")
-    
-    uploaded_photo = None
-    
-    if input_method == "📂 Upload File":
-        uploaded_photo = st.file_uploader("Choose an image", type=['jpg', 'jpeg', 'png'], key="photo_upload")
-    else:
-        uploaded_photo = st.camera_input("Take a photo of a car/plate")
+    # Combined Input (Mobile Native: Camera + Gallery)
+    uploaded_photo = st.file_uploader("📸 Take Photo / 📂 Upload Image", type=['jpg', 'jpeg', 'png'], key="photo_upload")
     
     if uploaded_photo:
         # Create unique ID for this upload
         file_id = f"{uploaded_photo.name}_{uploaded_photo.size}"
         
-        # Mobile UX: Show preview immediately (for file upload)
-        if input_method == "📂 Upload File":
-             st.image(uploaded_photo, caption="Preview", use_column_width=True)
+        # Show preview
+        st.image(uploaded_photo, caption="Preview", use_column_width=True)
         
         #  SEAMLESS PROCESSING (No Button Required)
         uploaded_photo.seek(0)
@@ -387,10 +379,7 @@ with tab1:
                         save_stats(stats)
                         st.session_state.processed_files.add(file_id)
                         
-                        if input_method == "📸 Take Live Photo":
-                            st.success("New capture saved!")
-                        else:
-                            st.balloons()
+                        st.balloons()
                     else:
                         st.caption("ℹ️ This image has already been processed and saved.")
                         for res in results:
