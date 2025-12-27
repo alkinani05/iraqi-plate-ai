@@ -44,6 +44,8 @@ def check_password():
     else:
         return True
 
+
+
 # ---------------------------------------------------------------------
 # 📁 DATASET MANAGEMENT v4.2
 # ---------------------------------------------------------------------
@@ -123,6 +125,10 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
+# Initialize Session State early
+if "processed_files" not in st.session_state:
+    st.session_state.processed_files = set()
 
 # ---------------------------------------------------------------------
 # 🎨 CSS
@@ -336,49 +342,66 @@ with tab1:
         uploaded_photo = st.camera_input("Take a photo of a car/plate")
     
     if uploaded_photo:
-        # Mobile UX Fix: Show preview immediately
+        # Create unique ID for this upload
+        file_id = f"{uploaded_photo.name}_{uploaded_photo.size}"
+        
+        # Mobile UX: Show preview immediately (for file upload)
         if input_method == "📂 Upload File":
              st.image(uploaded_photo, caption="Preview", use_column_width=True)
         
-        # Auto-process camera input (smoother UX) or Button for file
-        process_trigger = True if input_method == "📸 Take Live Photo" else st.button("🚀 ANALYZE PHOTO", use_container_width=True)
+        #  SEAMLESS PROCESSING (No Button Required)
+        uploaded_photo.seek(0)
+        file_bytes = np.asarray(bytearray(uploaded_photo.read()), dtype=np.uint8)
+        img = cv2.imdecode(file_bytes, 1)
         
-        if process_trigger:
-            # Create unique ID for this upload
-            file_id = f"{uploaded_photo.name}_{uploaded_photo.size}"
-            
-            uploaded_photo.seek(0) # Reset pointer
-            file_bytes = np.asarray(bytearray(uploaded_photo.read()), dtype=np.uint8)
-            img = cv2.imdecode(file_bytes, 1)
-            
-            with st.spinner("🤖 Analyzing & Archiving..."):
+        # 🛡️ ERROR HANDLING: Check if image decoded correctly
+        if img is None:
+            st.error("❌ Error: Could not decode image. Please use a valid JPG/PNG file.")
+        else:
+            with st.spinner("🤖 Analyzing..."):
                 results = reader.predict(img)
                 viz = reader.visualize(img, results)
                 
-                st.image(cv2.cvtColor(viz, cv2.COLOR_BGR2RGB), use_column_width=True)
+                st.image(cv2.cvtColor(viz, cv2.COLOR_BGR2RGB), use_column_width=True, caption="Analysis Result")
+                
+                # Smart Processing: Only save/stats if new file
+                is_new_file = file_id not in st.session_state.processed_files
                 
                 if results:
                     st.success(f"✅ Found {len(results)} plates!")
-                    batch_id = datetime.now().strftime("%H%M%S") + "_" + hashlib.md5(file_id.encode()).hexdigest()[:6]
                     
-                    for res in results:
-                        conf = res['conf']
-                        text = res['text']
-                        x1, y1, x2, y2 = res['box']
-                        plate_crop = img[y1:y2, x1:x2]
+                    if is_new_file:
+                        batch_id = datetime.now().strftime("%H%M%S") + "_" + hashlib.md5(file_id.encode()).hexdigest()[:6]
                         
-                        st.write(f"**{text}** ({int(conf*100)}%)")
-                        if save_entry(img, plate_crop, text, conf, batch_id):
-                            stats['plates_captured'] += 1
+                        for res in results:
+                            conf = res['conf']
+                            text = res['text']
+                            x1, y1, x2, y2 = res['box']
+                            plate_crop = img[y1:y2, x1:x2]
+                            
+                            st.write(f"**{text}** ({int(conf*100)}%)")
+                            if save_entry(img, plate_crop, text, conf, batch_id):
+                                stats['plates_captured'] += 1
+                        
+                        stats['total_uploads'] += 1
+                        save_stats(stats)
+                        st.session_state.processed_files.add(file_id)
+                        
+                        if input_method == "📸 Take Live Photo":
+                            st.success("New capture saved!")
+                        else:
+                            st.balloons()
+                    else:
+                        st.caption("ℹ️ This image has already been processed and saved.")
+                        for res in results:
+                             st.write(f"**{res['text']}** ({int(res['conf']*100)}%)")
+
                 else:
                     st.info("No plates detected")
-                
-                stats['total_uploads'] += 1
-                save_stats(stats)
-                if input_method == "📸 Take Live Photo":
-                    st.success("Captured! Take another?")
-                else:
-                    st.balloons()
+                    if is_new_file:
+                        stats['total_uploads'] += 1
+                        save_stats(stats)
+                        st.session_state.processed_files.add(file_id)
 
 # ---------------------------------------------------------------------
 # TAB 2: Video Upload
