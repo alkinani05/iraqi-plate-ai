@@ -1,0 +1,92 @@
+
+/* 
+   Iraqi Plate AI - Design System
+   Theme: Galactic Night (Cyber-HUD)
+*/
+
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Outfit:wght@300;400;700&family=Tajawal:wght@400;700&display=swap');
+
+.stApp {
+    background: linear-gradient(-45deg, #050510, #1a1a2e, #0f0c29, #1b001b);
+    background-size: 400% 400%;
+    animation: gradientBG 15s ease infinite;
+    color: #e0e0e0;
+}
+
+@keyframes gradientBG {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* GLASSMORPHISM TABS */
+.stTabs [data-baseweb="tab-list"] {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.stTabs [data-baseweb="tab"] {
+    color: #888;
+    font-family: 'Outfit', 'Tajawal', sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
+}
+
+.stTabs [aria-selected="true"] {
+    color: #00ff80 !important;
+    text-shadow: 0 0 10px rgba(0,255,128,0.5);
+}
+
+/* DASHBOARD CARDS */
+.stats-container {
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-left: 4px solid #00ff80;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    transition: transform 0.3s ease;
+}
+.stats-container:hover { transform: translateY(-5px); border-color: #00ffff; }
+
+.stFileUploader {
+    border: 2px dashed rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    padding: 20px;
+    background: rgba(0,0,0,0.2);
+}
+
+h1 {
+    font-family: 'Share Tech Mono', monospace;
+    color: #fff;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.8; text-shadow: 0 0 20px rgba(0,255,128,0.6); }
+    50% { opacity: 1.0; text-shadow: 0 0 40px rgba(0,255,128,0.9); }
+    100% { opacity: 0.8; text-shadow: 0 0 20px rgba(0,255,128,0.6); }
+}
+
+.stat-number {
+    font-size: 3.5rem;
+    font-weight: bold;
+    background: -webkit-linear-gradient(#00ff80, #008040);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-family: 'Share Tech Mono', monospace;
+}
+
+.stat-label {
+    font-family: 'Tajawal', sans-serif;
+    font-size: 1.1rem;
+    color: #ccc;
+}
+
+#MainMenu, footer, header {visibility: hidden;}

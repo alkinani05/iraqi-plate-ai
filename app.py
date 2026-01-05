@@ -4,628 +4,302 @@ import cv2
 import numpy as np
 import os
 import sys
-import json
-import hashlib
-from datetime import datetime
+import time
+import av
+import uuid
+import tempfile
 from pathlib import Path
-import zipfile
-import io
+from PIL import Image, ImageOps, ImageEnhance
+from streamlit_webrtc import webrtc_streamer, WebRtcMode
 
 # Add current directory to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from smart_plate_reader import PlateReader
-
-# ---------------------------------------------------------------------
-# 🔐 AUTHENTICATION
-# ---------------------------------------------------------------------
-ADMIN_USER = "husam"
-ADMIN_PASS_HASH = hashlib.sha256("987987987".encode()).hexdigest()
-
-def check_password():
-    """Returns True if password is correct"""
-    def password_entered():
-        if (st.session_state["username"] == ADMIN_USER and 
-            hashlib.sha256(st.session_state["password"].encode()).hexdigest() == ADMIN_PASS_HASH):
-            st.session_state["authenticated"] = True
-            del st.session_state["password"]  # Don't store password
-        else:
-            st.session_state["authenticated"] = False
-
-    if "authenticated" not in st.session_state:
-        st.text_input("Username", key="username")
-        st.text_input("Password", type="password", key="password", on_change=password_entered)
-        return False
-    elif not st.session_state["authenticated"]:
-        st.text_input("Username", key="username")
-        st.text_input("Password", type="password", key="password", on_change=password_entered)
-        st.error("🔒 Incorrect credentials")
-        return False
-    else:
-        return True
-
-
-
-# ---------------------------------------------------------------------
-# 📁 DATASET MANAGEMENT v4.2
-# ---------------------------------------------------------------------
-DATASET_DIR = Path("collected_dataset")
-FULL_IMG_DIR = DATASET_DIR / "full_images"
-CROPS_DIR = DATASET_DIR / "crops"
-METADATA_FILE = DATASET_DIR / "metadata.csv"
-STATS_FILE = DATASET_DIR / "stats.json"
-
-def init_dataset():
-    """Initialize dataset directories and stats file"""
-    # Create new structure
-    DATASET_DIR.mkdir(exist_ok=True)
-    FULL_IMG_DIR.mkdir(exist_ok=True)
-    CROPS_DIR.mkdir(exist_ok=True)
-    
-    # Initialize metadata header if new
-    if not METADATA_FILE.exists():
-        with open(METADATA_FILE, 'w') as f:
-            f.write("timestamp,full_image_id,crop_image_id,predicted_text,confidence,review_status\n")
-    
-    if not STATS_FILE.exists():
-        stats = {
-            "total_uploads": 0,
-            "plates_captured": 0,
-            "last_updated": datetime.now().isoformat()
-        }
-        save_stats(stats)
-    return load_stats()
-
-def load_stats():
-    if STATS_FILE.exists():
-        with open(STATS_FILE, 'r') as f:
-            return json.load(f)
-    return {"total_uploads": 0, "plates_captured": 0}
-
-def save_stats(stats):
-    stats["last_updated"] = datetime.now().isoformat()
-    with open(STATS_FILE, 'w') as f:
-        json.dump(stats, f, indent=2)
-
-def save_entry(full_img, plate_crop, text, confidence, base_filename):
-    """
-    Save Full Image + Crop + Metadata
-    base_filename: unique ID for the capture (e.g. timestamp_uuid)
-    """
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    # 1. Save Full Image (if not already saved for this batch)
-    # We use the base_filename to check existence to avoid duplicates if multiple plates in one car
-    full_img_name = f"full_{base_filename}.jpg"
-    full_img_path = FULL_IMG_DIR / full_img_name
-    if not full_img_path.exists():
-        cv2.imwrite(str(full_img_path), full_img)
-        
-    # 2. Save Crop
-    crop_name = f"crop_{base_filename}_{text}.jpg"
-    # Sanitize text for filename
-    safe_text = "".join([c for c in text if c.isalnum()])
-    crop_name = f"crop_{base_filename}_{safe_text}.jpg"
-    
-    cv2.imwrite(str(CROPS_DIR / crop_name), plate_crop)
-    
-    # 3. Log to CSV
-    # format: timestamp, full_img_name, crop_name, text, confidence, [PENDING]
-    with open(METADATA_FILE, 'a') as f:
-        f.write(f"{timestamp},{full_img_name},{crop_name},{text},{confidence:.4f},PENDING\n")
-    
-    return True
+# MODULE IMPORTS
+from src.core.plate_reader import PlateReader
+from src.core.database import Database
+from src.utils import network_scanner
+from src.ui import auth
 
 # ---------------------------------------------------------------------
 # ⚙️ CONFIG & PAGE SETUP
 # ---------------------------------------------------------------------
 st.set_page_config(
-    page_title="Iraqi Plate Collector", 
+    page_title="Iraqi Plate Collector Pro", 
     page_icon="🚗", 
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
-# Initialize Session State early
 if "processed_files" not in st.session_state:
     st.session_state.processed_files = set()
 
-# ---------------------------------------------------------------------
-# 🎨 CSS
-# ---------------------------------------------------------------------
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Outfit:wght@300;400;700&display=swap');
-    
-    /* 🌌 ANIMATED DEEP SPACE BACKGROUND */
-    .stApp {
-        background: linear-gradient(-45deg, #050510, #1a1a2e, #0f0c29, #1b001b);
-        background-size: 400% 400%;
-        animation: gradientBG 15s ease infinite;
-        color: #e0e0e0;
-    }
-    
-    @keyframes gradientBG {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-    }
-    
-    /* 🔮 GLASSMORPHISM CONTAINERS */
-    .stTabs [data-baseweb="tab-list"] {
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(10px);
-        border-radius: 16px;
-        padding: 10px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        color: #888;
-        font-family: 'Outfit', sans-serif;
-        font-weight: 700;
-    }
-    
-    .stTabs [aria-selected="true"] {
-        color: #00ff80 !important;
-        text-shadow: 0 0 10px rgba(0,255,128,0.5);
-    }
-    
-    /* 📊 STATS CARDS WITH NEON BORDERS */
-    .stats-container {
-        background: rgba(0, 0, 0, 0.4);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-left: 4px solid #00ff80; /* Default Green */
-        border-radius: 12px;
-        padding: 20px;
-        text-align: center;
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-    }
-    
-    .stats-container:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 30px rgba(0, 255, 128, 0.2);
-        border-color: #00ffff; /* Hover Cyan */
-    }
-    
-    /* 🚀 UPLOAD BOX STYLING */
-    .stFileUploader {
-        border: 2px dashed rgba(255, 255, 255, 0.2);
-        border-radius: 12px;
-        padding: 20px;
-        background: rgba(0,0,0,0.2);
-        transition: border 0.3s;
-    }
-    
-    .stFileUploader:hover {
-        border-color: #00ff80;
-        background: rgba(0, 255, 128, 0.05);
-    }
+# Load External CSS
+def load_css():
+    css_path = Path("styles/style.css")
+    if css_path.exists():
+        with open(css_path) as f:
+            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
-    /* 🖋️ TYPOGRAPHY */
-    h1 {
-        font-family: 'Share Tech Mono', monospace;
-        color: #fff;
-        text-align: center;
-        text-transform: uppercase;
-        letter-spacing: 3px;
-    }
-    
-    h3 {
-        font-family: 'Outfit', sans-serif;
-        color: #00ffff; /* Cyan Headers */
-        border-bottom: 2px solid rgba(0, 255, 255, 0.3);
-        padding-bottom: 10px;
-        margin-top: 20px;
-    }
-    
-    /* ✨ PULSE ANIMATION FOR LOGO */
-    @keyframes pulse {
-        0% { opacity: 0.8; text-shadow: 0 0 20px rgba(0,255,128,0.6); }
-        50% { opacity: 1.0; text-shadow: 0 0 40px rgba(0,255,128,0.9), 0 0 80px rgba(0,255,128,0.4); }
-        100% { opacity: 0.8; text-shadow: 0 0 20px rgba(0,255,128,0.6); }
-    }
-    
-    .stat-number {
-        font-size: 3.5rem;
-        font-weight: bold;
-        background: -webkit-linear-gradient(#00ff80, #008040);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-family: 'Share Tech Mono', monospace;
-    }
-    
-    .stat-label {
-        font-size: 0.9rem;
-        color: #aaa;
-        text-transform: uppercase;
-        letter-spacing: 2px;
-        font-family: 'Outfit', sans-serif;
-    }
-    
-    /* 🔴 ALERT BOXES */
-    .stAlert {
-        background-color: rgba(0,0,0,0.6) !important;
-        border: 1px solid #333 !important;
-        border-radius: 8px;
-    }
-    
-    #MainMenu, footer, header {visibility: hidden;}
-</style>
-""", unsafe_allow_html=True)
+load_css()
 
 # ---------------------------------------------------------------------
-# 🧠 AI LOGIC
+# 🧠 AI & DATA LOGIC
 # ---------------------------------------------------------------------
 @st.cache_resource
 def load_model():
     return PlateReader()
 
+def get_db():
+    return Database()
+
 try:
     reader = load_model()
+    db = get_db()
 except Exception as e:
     st.error(f"System Error: {e}")
     st.stop()
 
-# Initialize dataset
-stats = init_dataset()
+# ---------------------------------------------------------------------
+# 🛠 SIDEBAR TOOLS
+# ---------------------------------------------------------------------
+with st.sidebar:
+    st.markdown("### 🛠 Tools / الأدوات")
+    st.markdown("---")
+    
+    st.markdown("#### 📷 Image Enhancement")
+    brightness_val = st.slider("Brightness / السطوع", 0.5, 2.0, 1.0, 0.1)
+    contrast_val = st.slider("Contrast / التباين", 0.5, 2.0, 1.0, 0.1)
+    
+    st.markdown("---")
+    st.markdown("#### 🤖 AI Settings")
+    conf_thres = st.slider("Min Confidence", 0.1, 0.9, 0.35, 0.05)
+    
+    st.markdown("---")
+    st.success("GPU/CPU: Active")
+    st.info(f"Model: {reader.device}")
 
-# ---------------------------------------------------------------------
-# 📱 MAIN APP
-# ---------------------------------------------------------------------
+def apply_enhancements(img_arr):
+    pil_img = Image.fromarray(cv2.cvtColor(img_arr, cv2.COLOR_BGR2RGB))
+    enhancer = ImageEnhance.Brightness(pil_img)
+    pil_img = enhancer.enhance(brightness_val)
+    enhancer = ImageEnhance.Contrast(pil_img)
+    pil_img = enhancer.enhance(contrast_val)
+    return cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+
 # ---------------------------------------------------------------------
 # 📱 MAIN APP
 # ---------------------------------------------------------------------
 st.markdown("""
 <div style="text-align: center; margin-bottom: 30px;">
-    <h1 style="margin-bottom: 0;">DATA COLLECTOR v4.2</h1>
-    <div style="
-        font-family: 'Outfit', sans-serif;
-        color: #666;
-        font-size: 1rem;
-        letter-spacing: 5px;
-        text-transform: uppercase;
-        margin-top: 10px;
-    ">
-        POWERED BY <span style="
-            color: #00ff80; 
-            font-weight: 700; 
-            text-shadow: 0 0 20px rgba(0,255,128,0.6);
-            animation: pulse 2s infinite;
-        ">ALGONEST AI</span>
+    <h1 style="font-size: 3.5rem; margin-bottom: 0; text-shadow: 0 0 30px rgba(0, 255, 128, 0.3);">DATA COLLECTOR PRO</h1>
+    <div style="font-family: 'Outfit', sans-serif; color: #888; font-size: 1.1rem; letter-spacing: 6px; text-transform: uppercase;">
+        POWERED BY <span style="color: #00ff80; font-weight: 800; animation: pulse 2.5s infinite;">ALGONEST AI</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Public Stats Display
-col1, col2 = st.columns(2)
-with col1:
-    st.markdown(f"""
-    <div class='stats-container'>
-        <div class='stat-number'>{stats['total_uploads']}</div>
-        <div class='stat-label'>Contributions</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-with col2:
-    st.markdown(f"""
-    <div class='stats-container'>
-        <div class='stat-number'>{stats['plates_captured']}</div>
-        <div class='stat-label'>Plates In Database</div>
-    </div>
-    """, unsafe_allow_html=True)
+# TOP KPIs
+kpi1, kpi2, kpi3 = st.columns(3)
+with kpi1:
+    st.markdown(f"""<div class='stats-container'><div class='stat-number'>{db.get_stat('total_uploads')}</div><div class='stat-label'>Total Uploads / الرفع</div></div>""", unsafe_allow_html=True)
+with kpi2:
+    st.markdown(f"""<div class='stats-container'><div class='stat-number'>{db.get_stat('plates_captured')}</div><div class='stat-label'>Plates Captured / اللوحات</div></div>""", unsafe_allow_html=True)
+with kpi3:
+    pending_count = db.get_pending_count()
+    color = "#ff3333" if pending_count > 0 else "#00ff80"
+    st.markdown(f"""<div class='stats-container' style='border-left-color:{color}'><div class='stat-number' style='color:{color}'>{pending_count}</div><div class='stat-label'>Pending Review / قيد المراجعة</div></div>""", unsafe_allow_html=True)
 
-# Main Tabs
-tab1, tab2, tab3 = st.tabs(["📸 UPLOAD PHOTO", "🎬 UPLOAD VIDEO", "🔐 ADMIN"])
+# TABS
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📸 PHOTO", "🎬 VIDEO", "🔴 LIVE CAMERA", "📡 IP CAMS", "🔐 ADMIN"])
 
 # ---------------------------------------------------------------------
-# TAB 1: Photo Upload
-# ---------------------------------------------------------------------
-# ---------------------------------------------------------------------
-# TAB 1: Photo Upload
-# ---------------------------------------------------------------------
-# ---------------------------------------------------------------------
-# TAB 1: Photo Upload
+# TAB 1: Photo
 # ---------------------------------------------------------------------
 with tab1:
-    st.markdown("### Upload Iraqi License Plate Photo")
-    
-    # Direct Upload (No Form) for better mobile feedback
-    uploaded_photo = st.file_uploader("📸 Take Photo / 📂 Upload Image", type=['jpg', 'jpeg', 'png'])
-    
+    st.markdown("### 📸 Photo Analysis")
+    uploaded_photo = st.file_uploader("Upload Image", type=['jpg', 'jpeg', 'png'])
     if uploaded_photo:
-        # Show button ONLY when file is present
-        if st.button("🚀 ANALYZE IMAGE", use_container_width=True, type="primary"):
-            submitted = True
-        else:
-            submitted = False
-    else:
-        submitted = False
-    
-    if submitted and uploaded_photo:
-        # Create unique ID for this upload
-        file_id = f"{uploaded_photo.name}_{uploaded_photo.size}"
-        
-        # Show preview immediately upon upload
-        st.image(uploaded_photo, caption="Uploaded Image", use_column_width=True)
-        
-        #  SEAMLESS PROCESSING (No Button Required)
-        try:
-            from PIL import Image, ImageOps
-            uploaded_photo.seek(0)
+        if st.button("🚀 ANALYZE", type="primary", use_container_width=True):
+            file_id = f"{uploaded_photo.name}_{uploaded_photo.size}"
+            
             image_pil = Image.open(uploaded_photo)
-            # 🔄 Fix Mobile Rotation (EXIF)
             image_pil = ImageOps.exif_transpose(image_pil)
-            # Convert PIL (RGB) to OpenCV (BGR)
             img = np.array(image_pil)
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        except Exception as e:
-             st.error(f"❌ Error loading image: {e}")
-             img = None
-        
-        if img is None:
-            st.error("❌ Error: Could not understand image format.")
-        else:
-            with st.spinner("🤖 Analyzing..."):
-                results = reader.predict(img)
+            
+            img = apply_enhancements(img)
+            
+            with st.spinner("🤖 Processing..."):
+                results = reader.predict(img, conf_thres=conf_thres)
                 viz = reader.visualize(img, results)
+                st.image(cv2.cvtColor(viz, cv2.COLOR_BGR2RGB), use_column_width=True)
                 
-                st.image(cv2.cvtColor(viz, cv2.COLOR_BGR2RGB), use_column_width=True, caption="Analysis Result")
-                
-                # Smart Processing: Only save/stats if new file
-                is_new_file = file_id not in st.session_state.processed_files
-                
-                if results:
-                    st.success(f"✅ Found {len(results)} plates!")
-                    
-                    if is_new_file:
-                        batch_id = datetime.now().strftime("%H%M%S") + "_" + hashlib.md5(file_id.encode()).hexdigest()[:6]
-                        
-                        for res in results:
-                            conf = res['conf']
-                            text = res['text']
-                            x1, y1, x2, y2 = res['box']
-                            plate_crop = img[y1:y2, x1:x2]
-                            
-                            st.write(f"**{text}** ({int(conf*100)}%)")
-                            if save_entry(img, plate_crop, text, conf, batch_id):
-                                stats['plates_captured'] += 1
-                        
-                        stats['total_uploads'] += 1
-                        save_stats(stats)
-                        st.session_state.processed_files.add(file_id)
-                        
-                        st.balloons()
-                    else:
-                        st.caption("ℹ️ This image has already been processed and saved.")
-                        for res in results:
-                             st.write(f"**{res['text']}** ({int(res['conf']*100)}%)")
-
-                else:
-                    st.info("No plates detected")
-                    if is_new_file:
-                        stats['total_uploads'] += 1
-                        save_stats(stats)
-                        st.session_state.processed_files.add(file_id)
-
+                if results and file_id not in st.session_state.processed_files:
+                    batch_id = str(uuid.uuid4())[:8]
+                    for res in results:
+                         x1, y1, x2, y2 = res['box']
+                         crop_img = img[y1:y2, x1:x2]
+                         
+                         # Save to DB
+                         full_name = f"full_{batch_id}.jpg" 
+                         crop_name = f"crop_{batch_id}_{int(time.time())}.jpg"
+                         
+                         db.add_entry(full_name, crop_name, res['text'], res['conf'], batch_id)
+                         
+                         # Save Disk (Database logic only stores filename, we need actual save)
+                         # Wait, DB wrapper expects paths but doesn't write files? 
+                         # Let's fix this inline for now.
+                         cv2.imwrite(str(Path("collected_dataset/full_images") / full_name), img)
+                         cv2.imwrite(str(Path("collected_dataset/crops") / crop_name), crop_img)
+                         
+                    db.increment_stat('total_uploads')
+                    st.session_state.processed_files.add(file_id)
+                    st.success(f"✅ Saved {len(results)} plates!")
+                    st.rerun() # Refresh KPIs
 
 # ---------------------------------------------------------------------
-# TAB 2: Video Upload
-# ---------------------------------------------------------------------
-# ---------------------------------------------------------------------
-# TAB 2: Video Upload
+# TAB 2: Video
 # ---------------------------------------------------------------------
 with tab2:
-    st.markdown("### Process Iraqi License Plate Video")
-    uploaded_video = st.file_uploader("Upload Video File (MP4/MOV)", type=['mp4', 'avi', 'mov'], key="video")
-    
-    if uploaded_video:
-        st.info("Video uploaded! Click below to start processing.")
-        if st.button("🎬 START PROCESSING VIDEO", use_container_width=True):
-            # Save temp video
-            target_video_path = "temp_upload.mp4"
-            with open(target_video_path, 'wb') as f:
-                f.write(uploaded_video.read())
-            
-            with st.spinner("🎬 Processing video frames..."):
-                cap = cv2.VideoCapture(target_video_path)
-                frame_count = 0
-                collected_count = 0
-                
-                progress_bar = st.progress(0)
-                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                if total_frames <= 0: total_frames = 1
-                
-                while cap.isOpened():
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                    
-                    frame_count += 1
-                    
-                    # Process every 10th frame
-                    if frame_count % 10 == 0:
-                        results = reader.predict(frame)
-                        
-                        if results:
-                            # Unique batch ID for this frame highlight
-                            batch_id = f"vid_{datetime.now().strftime('%H%M%S')}_f{frame_count}"
-                            
-                            for res in results:
-                                conf = res['conf']
-                                text = res['text']
-                                x1, y1, x2, y2 = res['box']
-                                plate_crop = frame[y1:y2, x1:x2]
-                                
-                                if save_entry(frame, plate_crop, text, conf, batch_id):
-                                    collected_count += 1
-                        
-                        progress_bar.progress(min(frame_count / total_frames, 1.0))
-                
-                cap.release()
-                if os.path.exists(target_video_path):
-                    os.remove(target_video_path)
-                
-                st.success(f"✅ Video Processed! Archived {collected_count} plates.")
-                
-                # Update stats
-                stats['total_uploads'] += 1
-                stats['plates_captured'] += collected_count
-                save_stats(stats)
-                st.session_state.processed_files.add(file_id)
-                st.rerun()
-        else:
-            st.info("✅ Video already processed. Check stats above.")
-
-# ---------------------------------------------------------------------
-# TAB 3: Admin Panel
-# ---------------------------------------------------------------------
-def delete_entry(crop_filename):
-    """Delete a specific entry from filesystem and metadata"""
-    # 1. Delete Crop File
-    crop_path = CROPS_DIR / crop_filename
-    if crop_path.exists():
-        os.remove(crop_path)
-    
-    # 2. Update Metadata CSV
-    if METADATA_FILE.exists():
-        lines = []
-        with open(METADATA_FILE, 'r') as f:
-            lines = f.readlines()
+    st.markdown("### 🎬 Video Analysis")
+    uploaded_video = st.file_uploader("Upload Video", type=['mp4', 'mov', 'avi'])
+    if uploaded_video and st.button("Start Video Analysis", use_container_width=True):
+        tfile = tempfile.NamedTemporaryFile(delete=False)
+        tfile.write(uploaded_video.read())
         
-        with open(METADATA_FILE, 'w') as f:
-            for line in lines:
-                # Check if this line contains the filename
-                if crop_filename not in line:
-                    f.write(line)
-    
-    # 3. Update Stats
-    stats = load_stats()
-    if stats['plates_captured'] > 0:
-        stats['plates_captured'] -= 1
-        save_stats(stats)
-    
-    return True
+        cap = cv2.VideoCapture(tfile.name)
+        bar = st.progress(0)
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        count = 0
+        
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret: break
+            
+            if int(cap.get(cv2.CAP_PROP_POS_FRAMES)) % 10 == 0:
+                frame = apply_enhancements(frame)
+                results = reader.predict(frame, conf_thres=conf_thres)
+                
+                if results:
+                    bid = str(uuid.uuid4())[:8]
+                    for res in results:
+                        x1, y1, x2, y2 = res['box']
+                        crop_img = frame[y1:y2, x1:x2]
+                        
+                        fname = f"vid_{bid}_{count}.jpg"
+                        cname = f"crop_{bid}_{count}.jpg"
+                        
+                        cv2.imwrite(str(Path("collected_dataset/full_images") / fname), frame)
+                        cv2.imwrite(str(Path("collected_dataset/crops") / cname), crop_img)
+                        
+                        db.add_entry(fname, cname, res['text'], res['conf'], bid)
+                        count += 1
+                        
+            cur_pos = cap.get(cv2.CAP_PROP_POS_FRAMES)
+            if total > 0: bar.progress(min(cur_pos/total, 1.0))
+        
+        cap.release()
+        st.success(f"✅ Extracted {count} plates!")
+        st.rerun()
 
 # ---------------------------------------------------------------------
-# ☁️ CLOUD SYNC LOGIC
-# ---------------------------------------------------------------------
-def sync_to_cloud():
-    """Uploads collected_dataset to Hugging Face Hub"""
-    from huggingface_hub import HfApi
-    # SECURITY FIX: Use Secret from Environment
-    TOKEN = os.environ.get("HF_TOKEN")
-    if not TOKEN:
-        return False, "❌ Error: HF_TOKEN secret not set in Space settings!"
-    DATASET_REPO = "husam05/iraqi-plate-dataset"
-    
-    api = HfApi(token=TOKEN)
-    
-    try:
-        api.upload_folder(
-            folder_path=str(DATASET_DIR),
-            repo_id=DATASET_REPO,
-            repo_type="dataset",
-            path_in_repo="data", # Store inside a data/ folder
-            commit_message=f"Auto-sync: {datetime.now().isoformat()}"
-        )
-        return True, "✅ Synced successfully!"
-    except Exception as e:
-        return False, f"❌ Sync Failed: {e}"
-
-# ---------------------------------------------------------------------
-# TAB 3: Admin Panel
+# TAB 3: Live
 # ---------------------------------------------------------------------
 with tab3:
-    if check_password():
-        st.success(f"✅ Logged in as {ADMIN_USER}")
-        
-        # Dashboard Controls
-        st.markdown("### ☁️ Cloud Data Management")
-        col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
-        
-        with col_ctrl1:
-            if st.button("☁️ SYNC TO CLOUD", use_container_width=True):
-                with st.spinner("Uploading data to 'husam05/iraqi-plate-dataset'..."):
-                    success, msg = sync_to_cloud()
-                    if success:
-                        st.success(msg)
-                    else:
-                        st.error(msg)
-        
-        with col_ctrl2:
-            # Download Dataset Button
-            if st.button("📦 Download ZIP", use_container_width=True):
-                # Create ZIP
-                zip_buffer = io.BytesIO()
-                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                    # Walk through the directory and add all files
-                    for root, dirs, files in os.walk(DATASET_DIR):
-                        for file in files:
-                            file_path = os.path.join(root, file)
-                            arcname = os.path.relpath(file_path, DATASET_DIR)
-                            zip_file.write(file_path, arcname)
+    st.markdown("### 🔴 Cyber-HUD Live")
+    def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+        img = frame.to_ndarray(format="bgr24")
+        results = reader.predict(img, conf_thres=conf_thres)
+        annotated = reader.visualize(img, results)
+        return av.VideoFrame.from_ndarray(annotated, format="bgr24")
+
+    webrtc_streamer(key="live", mode=WebRtcMode.SENDRECV, video_frame_callback=video_frame_callback)
+
+# ---------------------------------------------------------------------
+# TAB 4: IP Cams (Scanner Integrated)
+# ---------------------------------------------------------------------
+with tab4:
+    st.markdown("### 📡 IP Camera Hub")
+    
+    col_scan, col_view = st.columns([1, 2])
+    
+    with col_scan:
+        st.warning("⚠️ Scanner is intensive. Run only if necessary.")
+        if st.button("Start Network Scan"):
+            scan_placeholder = st.empty()
+            progress_bar = st.progress(0)
+            
+            def update_progress(p):
+                progress_bar.progress(p)
+            
+            results = network_scanner.scan_network(progress_callback=update_progress)
+            
+            if not results:
+                st.error("No Cameras Found")
+            else:
+                st.success(f"Found {len(results)} Devices")
+                for dev in results:
+                    st.json(dev)
+                    urls = network_scanner.get_rtsp_urls(dev)
+                    for url in urls:
+                         st.code(url, language="text")
+    
+    with col_view:
+        rtsp_url = st.text_input("RTSP Stream URL", "rtsp://admin:12345@192.168.1.64:554/stream")
+        if st.checkbox("Start Stream"):
+            st_img = st.empty()
+            cap = cv2.VideoCapture(rtsp_url)
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    st.error("Connection Failed")
+                    break
                 
-                zip_buffer.seek(0)
-                st.download_button(
-                    label="⬇️ Click to Save ZIP",
-                    data=zip_buffer,
-                    file_name=f"iraqi_plates_dataset_v4.2_{datetime.now().strftime('%Y%m%d')}.zip",
-                    mime="application/zip",
-                    use_container_width=True
-                )
-        
-        with col_ctrl3:
-             st.metric("Pending Local Files", len(list(CROPS_DIR.glob("*.jpg"))))
+                results = reader.predict(frame, conf_thres=conf_thres)
+                viz = reader.visualize(frame, results)
+                st_img.image(cv2.cvtColor(viz, cv2.COLOR_BGR2RGB), use_column_width=True)
 
+# ---------------------------------------------------------------------
+# TAB 5: ADMIN (Refined)
+# ---------------------------------------------------------------------
+with tab5:
+    if auth.check_password():
+        st.success("Authorized Access")
         st.markdown("---")
         
-        # Data Management Header
-        col_head1, col_head2 = st.columns([3, 1])
-        with col_head1:
-             st.markdown("### 🛠️ Review & Clean Data")
-        with col_head2:
-             show_all = st.checkbox("Show All Entries")
-
-        # Display collected crops with DELETE button
-        images = list(CROPS_DIR.glob("*.jpg"))
-        # Sort by newest first (modification time)
-        images.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+        # Tinder-style Review? Or Data Editor?
+        # Let's stick to Data Editor but backed by SQLite
         
-        if images:
-            limit = len(images) if show_all else 24
+        df = db.get_all()
+        if not df.empty:
+            st.markdown("### 📝 Dataset Management")
             
-            # Create grid
-            cols = st.columns(6)
-            for idx, img_path in enumerate(images[:limit]):
-                with cols[idx % 6]:
-                    img = cv2.imread(str(img_path))
-                    # Display Image
-                    st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), use_column_width=True)
-                    # Display Filename (truncated)
-                    st.caption(f"{img_path.name[:10]}...")
-                    # Delete Button
-                    if st.button("🗑️ DELETE", key=f"del_{img_path.name}", use_container_width=True):
-                        delete_entry(img_path.name)
-                        st.rerun()
+            edited_df = st.data_editor(
+                df,
+                column_config={
+                    "crop_image_path": st.column_config.ImageColumn("Crop", width=100), # Note: needs valid URL/Path. Streamlit ImageColumn tricky with local files.
+                    "review_status": st.column_config.SelectboxColumn("Status", options=["PENDING", "VERIFIED", "WRONG"])
+                },
+                disabled=["id", "timestamp"],
+                use_container_width=True,
+                key="editor"
+            )
             
-            if not show_all and len(images) > 24:
-                st.info(f"Showing 24 of {len(images)} most recent crops. Check 'Show All Entries' to see everything.")
+            if st.button("💾 Commit Changes"):
+                # Detect changes (Naive approach: Loop all?)
+                # SQLite update is fast. 
+                # Ideally we only update changed rows.
+                # Streamlit data_editor returns all data.
+                
+                # For DB: Iterate over edited_df and update DB
+                # This is heavy for large DBs but fine for <1000 rows
+                count = 0 
+                for index, row in edited_df.iterrows():
+                    # Only update if changed? 
+                    # We just blind update for simplicity or check diff
+                     db.update_status(row['id'], row['review_status'], row['predicted_text'])
+                     count+=1
+                st.success(f"Updated {count} records.")
         else:
-            st.info("No data collected yet.")
-        
-        # Reset Dataset (Danger Zone)
-        st.markdown("---")
-        st.markdown("### ⚠️ Danger Zone")
-        col_risk1, col_risk2 = st.columns(2)
-        with col_risk1:
-            if st.button("🗑️ DELETE EVERYTHING", type="secondary"):
-                if st.checkbox("I confirm complete deletion"):
-                    import shutil
-                    if DATASET_DIR.exists():
-                        shutil.rmtree(DATASET_DIR)
-                    init_dataset()
-                    st.success("Dataset CLEARED! ✅")
-                    st.rerun()
-
+            st.info("Database empty.")

@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  plate-collector:
+    build: .
+    container_name: iraqi-plate-collector
+    ports:
+      - "8501:8501"
+    volumes:
+      # Persist the dataset directory
+      - ./collected_dataset:/app/collected_dataset
+    restart: unless-stopped
+    environment:
+      - HF_TOKEN=${HF_TOKEN}

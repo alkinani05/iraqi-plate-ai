@@ -1,0 +1,24 @@
+# General
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
+.env
+.venv
+venv/
+
+# Secrets
+*.pri
+*.pem
+*.key
+id_rsa
+secrets.yaml
+
+# Data
+collected_dataset/
+temp_vid.mp4
+*.zip
+
+# IDEs
+.vscode/
+.idea/

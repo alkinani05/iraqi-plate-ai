@@ -1,0 +1,21 @@
+# Git & Docker
+.git
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose.yml
+README.md
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Dependencies
+venv
+.venv
+pip-log.txt
+
+# Dataset (Don't build huge datasets into the image)
+collected_dataset/
